@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 300" font-family="-apple-system, 'Segoe UI', sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#1e293b"/>
+    </linearGradient>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+  <rect width="960" height="300" rx="12" fill="url(#bg)"/>
+
+  <!-- lifecycle row -->
+  <g font-size="15" text-anchor="middle">
+    <rect x="40" y="40" width="150" height="46" rx="8" fill="#334155" stroke="#64748b"/>
+    <text x="115" y="68" fill="#e2e8f0">plan-it <tspan fill="#94a3b8">plans</tspan></text>
+    <line x1="190" y1="63" x2="240" y2="63" stroke="#94a3b8" stroke-width="2" marker-end="url(#arr)"/>
+    <rect x="240" y="40" width="150" height="46" rx="8" fill="#334155" stroke="#64748b"/>
+    <text x="315" y="68" fill="#e2e8f0">fable-it <tspan fill="#94a3b8">builds</tspan></text>
+    <line x1="390" y1="63" x2="440" y2="63" stroke="#94a3b8" stroke-width="2" marker-end="url(#arr)"/>
+    <rect x="440" y="34" width="180" height="58" rx="10" fill="#065f46" stroke="#34d399" stroke-width="2"/>
+    <text x="530" y="60" fill="#ecfdf5" font-weight="700">review-it</text>
+    <text x="530" y="80" fill="#a7f3d0" font-size="12">verifies</text>
+  </g>
+
+  <!-- modes -->
+  <g font-size="13" text-anchor="middle" fill="#e2e8f0">
+    <line x1="530" y1="92" x2="530" y2="120" stroke="#94a3b8" stroke-width="2" marker-end="url(#arr)"/>
+    <rect x="120" y="124" width="180" height="40" rx="8" fill="#1d4ed8" opacity="0.85"/>
+    <text x="210" y="149">contract-qa · PRIMARY</text>
+    <rect x="320" y="124" width="140" height="40" rx="8" fill="#334155" stroke="#64748b"/>
+    <text x="390" y="149">side-effects</text>
+    <rect x="480" y="124" width="150" height="40" rx="8" fill="#334155" stroke="#64748b"/>
+    <text x="555" y="149">deploy-verify</text>
+    <rect x="650" y="124" width="130" height="40" rx="8" fill="#334155" stroke="#64748b"/>
+    <text x="715" y="149">pr-review</text>
+  </g>
+
+  <!-- gates + report -->
+  <g font-size="13" text-anchor="middle">
+    <line x1="450" y1="164" x2="450" y2="192" stroke="#94a3b8" stroke-width="2" marker-end="url(#arr)"/>
+    <rect x="180" y="196" width="540" height="38" rx="8" fill="#7c2d12" stroke="#fb923c"/>
+    <text x="450" y="220" fill="#ffedd5">GATES — 11 rules: wrong-layer · operability · read-stability · narration≠evidence · oracle provenance…</text>
+    <line x1="450" y1="234" x2="450" y2="256" stroke="#94a3b8" stroke-width="2" marker-end="url(#arr)"/>
+    <text x="450" y="278" fill="#e2e8f0">one evidence-backed report — <tspan fill="#34d399">PASS</tspan> / <tspan fill="#f87171">FAIL</tspan> / <tspan fill="#fbbf24">INV + named blocker</tspan> · AUTHORED | DERIVED</text>
+  </g>
+
+  <!-- specialists sidebar -->
+  <g font-size="11" fill="#94a3b8" text-anchor="start">
+    <text x="700" y="50">routes execution to:</text>
+    <text x="700" y="66">full-qa · iterate · chrome-cdp-control</text>
+    <text x="700" y="82">make-eval · parallel-lifecycle</text>
+  </g>
+</svg>
