@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "machineVersion": "2.0.0",
+  "run": {
+    "goal": "Plan the consolidated QA/testing/review Devotts plugin (name TBD: test-it/review-it/qa-it)",
+    "startedAt": "2026-07-14T17:59:36Z"
+  },
+  "state": "done",
+  "size": "M",
+  "shape": 2,
+  "gates": {
+    "G1": {
+      "approved": true,
+      "owner": "Fernando",
+      "date": "2026-07-14"
+    },
+    "G2": {
+      "approved": true,
+      "owner": "Fernando",
+      "date": "2026-07-14"
+    },
+    "G3": {
+      "approved": true,
+      "owner": "Fernando",
+      "date": "2026-07-14"
+    }
+  },
+  "contract": {
+    "version": "1.1",
+    "path": "PRD.md",
+    "frozenAt": "2026-07-14T18:25:45Z",
+    "sha256": "462cb00745be5f28cd839398f36e9313e15d6cf8b6c702036b10e0a1dc708750",
+    "amendedAt": "2026-07-14T18:53:40Z"
+  },
+  "artifacts": [
+    {
+      "path": "research-SYNTHESIS.md",
+      "phase": 5,
+      "note": "pre-existing: research+synthesis done before plan-it invocation",
+      "verifiedAt": "2026-07-14T17:59:36Z"
+    },
+    {
+      "path": "research-BRIEF.md",
+      "phase": 0,
+      "verifiedAt": "2026-07-14T17:59:36Z"
+    },
+    {
+      "path": "research/research-findings-A-qa-system-docs.md",
+      "phase": 4,
+      "verifiedAt": "2026-07-14T17:59:36Z"
+    },
+    {
+      "path": "research/research-findings-B-skills-inventory.md",
+      "phase": 4,
+      "verifiedAt": "2026-07-14T17:59:36Z"
+    },
+    {
+      "path": "research/research-findings-C-e2e-unit-tests-session.md",
+      "phase": 4,
+      "verifiedAt": "2026-07-14T17:59:36Z"
+    },
+    {
+      "path": "research/research-findings-D-airtable-postmortem.md",
+      "phase": 4,
+      "verifiedAt": "2026-07-14T17:59:36Z"
+    },
+    {
+      "path": "research/research-findings-E-session-histories.md",
+      "phase": 4,
+      "verifiedAt": "2026-07-14T17:59:36Z"
+    },
+    {
+      "path": "PRD.md",
+      "phase": 6,
+      "note": "Shape-2 PRD v0.9 draft; contract section \u00a79 DRAFT until G3",
+      "verifiedAt": "2026-07-14T18:02:52Z"
+    },
+    {
+      "path": "qa/test-plan-master.md",
+      "phase": 10,
+      "verifiedAt": "2026-07-14T18:29:06Z"
+    },
+    {
+      "path": "KICKOFF.md",
+      "phase": 10,
+      "verifiedAt": "2026-07-14T18:29:06Z"
+    }
+  ],
+  "history": [
+    {
+      "state": "intake",
+      "event": "INTAKE_CAPTURED",
+      "at": "2026-07-14T17:59:36Z",
+      "note": "demand + pointers pre-captured in research-BRIEF.md; research corpus already on disk"
+    },
+    {
+      "state": "dodLock",
+      "event": "DOD_LOCKED",
+      "at": "2026-07-14T17:59:36Z",
+      "note": "DoD presented at G1 alongside size/shape"
+    },
+    {
+      "state": "scopeGate",
+      "event": "G1_APPROVED",
+      "at": "2026-07-14T18:00:49Z",
+      "note": "Size M, Shape 2 (single-file PRD-as-everything + qa/test-plan-master.md)"
+    },
+    {
+      "state": "preGround",
+      "event": "PRE_GROUNDED",
+      "at": "2026-07-14T18:00:49Z",
+      "note": "pre-existing research corpus; targets already exact-pathed in findings"
+    },
+    {
+      "state": "discovery",
+      "event": "FANOUT_COMPLETE",
+      "at": "2026-07-14T18:00:49Z",
+      "note": "gate-check verify PASS on research-SYNTHESIS.md, research-BRIEF.md, research/ (5 findings)"
+    },
+    {
+      "state": "synthesis",
+      "event": "SYNTHESIZED",
+      "at": "2026-07-14T18:00:49Z",
+      "note": "research-SYNTHESIS.md is the findings doc (doc-01 equivalent)"
+    },
+    {
+      "state": "specAuthoring",
+      "event": "SPECS_DRAFTED",
+      "at": "2026-07-14T18:02:52Z",
+      "note": "PRD.md v0.9 authored (Shape 2, single-file)"
+    },
+    {
+      "state": "decisionGate",
+      "event": "G2_ANSWERED",
+      "at": "2026-07-14T18:09:17Z",
+      "note": "D1 review-it; D2 review-it hosts report-format; D3 front door, contract-qa PRIMARY, pr-review secondary, deploy-verify elevated; D4 deprecate both + community-launch repo; D5 side-effects first-class"
+    },
+    {
+      "state": "coherencePass",
+      "event": "COHERENCE_DONE",
+      "at": "2026-07-14T18:09:17Z",
+      "note": "name locked everywhere, readiness->deploy-verify, PRD v0.95"
+    },
+    {
+      "state": "freezeGate",
+      "event": "G3_APPROVED",
+      "at": "2026-07-14T18:25:45Z"
+    },
+    {
+      "state": "backboneFreeze",
+      "event": "CONTRACT_FROZEN",
+      "at": "2026-07-14T18:25:45Z",
+      "note": "PRD.md \u00a79 frozen v1.0; gate-check freeze PASS; sha256 recorded"
+    },
+    {
+      "state": "parallelPlanning",
+      "event": "SQUADS_COMPLETE",
+      "at": "2026-07-14T18:29:06Z",
+      "note": "Shape-2 single-file: PRD.md + qa/test-plan-master.md are the squad output; gate-check verify PASS"
+    },
+    {
+      "state": "verify",
+      "event": "LINT_CLEAN",
+      "at": "2026-07-14T18:29:06Z",
+      "note": "gate-check handoff PASS (20 cases, 5 epic counts reconcile, 4 [REAL])"
+    },
+    {
+      "state": "adversaryGate",
+      "event": "ADVERSARY_CLEAN",
+      "at": "2026-07-14T18:29:06Z",
+      "note": "N/A manual: linear skill-authoring workflow, no declared state machine in contract"
+    },
+    {
+      "state": "handoff",
+      "event": "HANDOFF_DONE",
+      "at": "2026-07-14T18:29:06Z",
+      "note": "KICKOFF.md + launch prompt generated, pinned to PRD SHA"
+    },
+    {
+      "state": "done",
+      "event": "AMENDMENT",
+      "at": "2026-07-14T18:53:40Z",
+      "note": "v1.0->v1.1: FR1.5 no-contract ladder, R11 oracle-provenance, CB-9, G-11, cases T-E1-06/07 (pkg 20->22). Folded per plan-it Rule 1."
+    }
+  ]
+}
