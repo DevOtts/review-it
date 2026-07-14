@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "devotts",
+  "owner": {
+    "name": "DevOtts",
+    "url": "https://github.com/DevOtts"
+  },
+  "description": "DevOtts marketplace for Claude Code plugins. Add this repo, then install review-it (the QA front door) — shares the `devotts` namespace with fable-it and plan-it.",
+  "plugins": [
+    {
+      "name": "review-it",
+      "source": "./plugins/review-it",
+      "version": "1.0.0",
+      "description": "The QA front door of the DevOtts lifecycle family — plan-it plans, fable-it builds, review-it verifies. Runs the plan-phase Test Contract to prove the build obeys the plan, enforces an 11-rule gate catalog (wrong-layer verification, presence-vs-operability, single-read evidence, narration-as-proof, oracle provenance…), verifies third-party side-effects and staging/prod deploys, and emits one evidence-backed report format shared with fable-it.",
+      "author": {
+        "name": "DevOtts",
+        "url": "https://github.com/DevOtts"
+      },
+      "homepage": "https://github.com/DevOtts/review-it",
+      "license": "MIT",
+      "keywords": [
+        "qa",
+        "verification",
+        "test-contract",
+        "code-review",
+        "deploy-verify",
+        "evidence-ledger"
+      ]
+    }
+  ]
+}

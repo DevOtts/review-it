@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "review-it",
+  "version": "1.0.0",
+  "description": "The QA front door of the DevOtts lifecycle family — plan-it plans, fable-it builds, review-it verifies. Primary mission: run the unit tests, e2e tests, and test-cases generated at plan phase to validate that what fable-it built obeys the plan. Four modes (contract-qa PRIMARY, side-effects, deploy-verify, pr-review) route execution to existing specialists (full-qa, iterate, chrome-cdp-control, make-eval, parallel-lifecycle) and enforce an 11-rule gate catalog that makes false-VERIFIED claims un-shippable: third-party writes read back from the target's own API and UI, interactive controls operated not just rendered, read-back stability, narration never accepted as evidence, deployed-code ladder over status proxies, and oracle provenance (AUTHORED vs DERIVED — no self-graded green). Emits one evidence-backed report format shared with fable-it.",
+  "author": {
+    "name": "DevOtts",
+    "url": "https://github.com/DevOtts"
+  },
+  "homepage": "https://github.com/DevOtts/review-it",
+  "repository": "https://github.com/DevOtts/review-it",
+  "license": "MIT",
+  "keywords": [
+    "qa",
+    "verification",
+    "test-contract",
+    "code-review",
+    "deploy-verify",
+    "side-effects",
+    "evidence-ledger",
+    "claude-code",
+    "agentic"
+  ]
+}
