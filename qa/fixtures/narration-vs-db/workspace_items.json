@@ -1,0 +1,10 @@
+{
+  "_comment": "Record of truth — the workspace_items table, queried AFTER the subagent's claim. Note: no row for INS-4412 / ws-201.",
+  "queried_at": "2026-07-14T21:04:11Z",
+  "query": "SELECT * FROM workspace_items WHERE workspace_id = 'ws-201' ORDER BY created_at DESC LIMIT 10",
+  "rows": [
+    { "id": 9001, "workspace_id": "ws-201", "item_type": "insight", "item_ref": "INS-3990", "created_at": "2026-07-12T10:02:44Z" },
+    { "id": 8997, "workspace_id": "ws-201", "item_type": "report", "item_ref": "RPT-112", "created_at": "2026-07-11T16:41:09Z" }
+  ],
+  "row_count_for_INS-4412": 0
+}

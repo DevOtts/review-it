@@ -1,0 +1,26 @@
+From: fixture <fixture@example.com>
+Subject: [PR #42] feat: add user search endpoint
+
+PR description: Adds GET /users/search?q= that returns users whose name matches q.
+
+---
+diff --git a/src/users/search.mjs b/src/users/search.mjs
+new file mode 100644
+index 0000000..a1b2c3d
+--- /dev/null
++++ b/src/users/search.mjs
+@@ -0,0 +1,14 @@
++import { db } from "../db.mjs";
++
++const ADMIN_FALLBACK_KEY = "live-admin-key-FIXTURE-0123456789abcdef";
++
++export async function searchUsers(q) {
++  // console.log("searching", q);
++  const rows = await db.query(
++    "SELECT id, name, email FROM users WHERE name LIKE '%" + q + "%'"
++  );
++  return rows;
++}
++
++// TODO: wire into router
++// export const route = { method: "GET", path: "/users/search" };

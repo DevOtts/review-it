@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Saved segment — filters</title>
+<style>
+  body { font-family: -apple-system, sans-serif; background:#f6f7f9; margin:24px; }
+  .panel { background:#fff; border:1px solid #d9dce1; border-radius:8px; padding:16px; width:560px; }
+  h2 { margin:0 0 12px; font-size:15px; }
+  .filter-row { display:flex; gap:8px; align-items:center; padding:8px; border:1px solid #e3e6ea; border-radius:6px; margin-bottom:8px; }
+  .chip { background:#eef2ff; color:#3730a3; padding:2px 8px; border-radius:10px; font-size:12px; }
+  select, input { padding:4px 6px; font-size:13px; }
+</style></head>
+<body>
+  <div class="panel">
+    <h2>Segment filters</h2>
+    <div class="filter-row" data-testid="filter-row">
+      <span class="chip">1</span>
+      <select><option>Status</option></select>
+      <select><option>is</option></select>
+      <input value="Active">
+    </div>
+    <div class="filter-row" data-testid="filter-row">
+      <span class="chip">2</span>
+      <select><option>Plan</option></select>
+      <select><option>is not</option></select>
+      <input value="Free">
+    </div>
+    <button>+ Add filter</button>
+  </div>
+</body>
+</html>
