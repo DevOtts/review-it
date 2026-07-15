@@ -62,6 +62,9 @@ DERIVED green means "self-consistent," never "obeys the plan." **No self-graded 
 
 # 2. Install
 /plugin install review-it@devotts
+
+# Or as a standalone skill package
+npx skills add DevOtts/review-it
 ```
 
 Then hand it a target:
@@ -140,6 +143,10 @@ Full specs (each trigger → test → action):
 
 review-it consumes plan-it's Test Contract 1:1 and feeds its verdict rows into fable-it's
 evidence ledger — one report format, hosted here, both plugins point at it.
+
+## Security
+
+review-it is read-mostly by design: it writes only its report/ledger conventions in consumer repos, never proposes credential storage, human-gates credential operations and destructive steps (safety ladder), and routes authenticated browser work to chrome-cdp-control's per-write confirmation gate. Details in [`SKILL.md`](SKILL.md#security-considerations).
 
 ## License
 

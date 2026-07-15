@@ -1,6 +1,6 @@
 ---
 name: side-effects
-description: Third-party side-effect verification — the Airtable failure class, first-class. Verifies that writes to external systems (Airtable, Slack, Shopify, CRMs, payment providers) actually landed, by reading the record back from the target system's OWN surfaces — API GET for field values AND the UI render for display semantics — with read-back stability (2–3 reads) and real-target coverage. Invoked by /review-it when a DoD includes third-party writes, or standalone when the user says "verify the write landed", "check the Airtable/Slack/Shopify record", "did the integration actually save it". A write verified only by sender-side success is not verified.
+description: "Third-party side-effect verification \u2014 the Airtable failure class, first-class. Verifies that writes to external systems (Airtable, Slack, Shopify, CRMs, payment providers) actually landed, by reading the record back from the target system's OWN surfaces \u2014 API GET for field values AND the UI render for display semantics \u2014 with read-back stability (2\u20133 reads) and real-target coverage. Invoked by /review-it when a DoD includes third-party writes, or standalone when the user says \"verify the write landed\", \"check the Airtable/Slack/Shopify record\", \"did the integration actually save it\". A write verified only by sender-side success is not verified."
 version: 1.0.0
 license: MIT
 author: DevOtts
