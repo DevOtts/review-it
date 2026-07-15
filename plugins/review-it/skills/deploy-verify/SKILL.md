@@ -1,6 +1,6 @@
 ---
 name: deploy-verify
-description: Staging/prod deploy verification — proves the build actually works in the live environment, not that a dashboard says "Ready". Runs the deployed-code ladder (curl the new route, grep served HTML, digest-pin — merged ≠ deployable ≠ deployed), re-runs the Test Contract's [REAL]-tagged cases against the live env under Tier-2 rules, walks the release checklist (rollback, monitoring, feature flags, migration safety, credential hygiene), and emits READY / NOT-READY with per-item evidence. Invoked by /review-it when the target is "staging"/"prod"/a release, or standalone when the user says "verify the deploy", "is it actually live", "pre-release check", "can we ship this".
+description: "Staging/prod deploy verification \u2014 proves the build actually works in the live environment, not that a dashboard says \"Ready\". Runs the deployed-code ladder (curl the new route, grep served HTML, digest-pin \u2014 merged \u2260 deployable \u2260 deployed), re-runs the Test Contract's [REAL]-tagged cases against the live env under Tier-2 rules, walks the release checklist (rollback, monitoring, feature flags, migration safety, credential hygiene), and emits READY / NOT-READY with per-item evidence. Invoked by /review-it when the target is \"staging\"/\"prod\"/a release, or standalone when the user says \"verify the deploy\", \"is it actually live\", \"pre-release check\", \"can we ship this\"."
 version: 1.0.0
 license: MIT
 author: DevOtts

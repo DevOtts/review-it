@@ -1,6 +1,6 @@
 ---
 name: pr-review
-description: SECONDARY review-it mode — the PR-review PROCESS wrapper. Produces severity-tiered (BLOCKER/MAJOR/MINOR/NIT), evidence-cited (file:line) findings with a blocking-vs-advisory split, loading the consumer project's checklist from .claude/review-config.md (works with zero config via a generic checklist). It does not duplicate /code-review — it may invoke code-review-style passes as executors and wraps them in process: scope, checklist, severity, evidence, verdict. Invoked by /review-it when the target is a PR ref/branch/diff, or standalone when the user says "review this PR", "review the diff", "pre-merge review".
+description: "SECONDARY review-it mode \u2014 the PR-review PROCESS wrapper. Produces severity-tiered (BLOCKER/MAJOR/MINOR/NIT), evidence-cited (file:line) findings with a blocking-vs-advisory split, loading the consumer project's checklist from .claude/review-config.md (works with zero config via a generic checklist). It does not duplicate /code-review \u2014 it may invoke code-review-style passes as executors and wraps them in process: scope, checklist, severity, evidence, verdict. Invoked by /review-it when the target is a PR ref/branch/diff, or standalone when the user says \"review this PR\", \"review the diff\", \"pre-merge review\"."
 version: 1.0.0
 license: MIT
 author: DevOtts

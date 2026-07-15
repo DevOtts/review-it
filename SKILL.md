@@ -1,6 +1,6 @@
 ---
 name: review-it
-description: The QA front door of the DevOtts lifecycle family — plan-it plans, fable-it builds, /review-it verifies. PRIMARY mission: run the unit tests, e2e tests and test-cases generated at plan phase to prove the build obeys the plan — the independent verification leg of the plan→build→review triangle. Also verifies third-party side-effects (the Airtable class), staging/prod deploys (deployed-code ladder + [REAL] re-runs), and runs a severity-tiered PR review. Routes execution to full-qa, iterate, chrome-cdp-control, make-eval and parallel-lifecycle — never re-implements them — and enforces an 11-rule gate catalog that makes false-VERIFIED claims un-shippable. Invoked with no Test Contract it never refuses and never self-grades — it runs the no-contract ladder and tags every verdict AUTHORED or DERIVED. Use when the user says "/review-it", "review it", "verify the build", "run the test contract", "QA this feature", "verify this deploy", "review this PR", or when fable-it reaches its QA phase.
+description: "The QA front door of the DevOtts lifecycle family \u2014 plan-it plans, fable-it builds, /review-it verifies. PRIMARY mission: run the unit tests, e2e tests and test-cases generated at plan phase to prove the build obeys the plan \u2014 the independent verification leg of the plan\u2192build\u2192review triangle. Also verifies third-party side-effects (the Airtable class), staging/prod deploys (deployed-code ladder + [REAL] re-runs), and runs a severity-tiered PR review. Routes execution to full-qa, iterate, chrome-cdp-control, make-eval and parallel-lifecycle \u2014 never re-implements them \u2014 and enforces an 11-rule gate catalog that makes false-VERIFIED claims un-shippable. Invoked with no Test Contract it never refuses and never self-grades \u2014 it runs the no-contract ladder and tags every verdict AUTHORED or DERIVED. Use when the user says \"/review-it\", \"review it\", \"verify the build\", \"run the test contract\", \"QA this feature\", \"verify this deploy\", \"review this PR\", or when fable-it reaches its QA phase."
 version: 1.0.0
 license: MIT
 author: DevOtts
@@ -123,6 +123,26 @@ Every row carries its oracle-provenance tag (`AUTHORED` | `DERIVED`). INV rows a
 - Do not skip silently — every non-run case is SKIP-no-script, SKIP-out-of-scope, BLOCK or INV with a named blocker (CB-1).
 - Do not write to consumer repos outside the report/ledger conventions; no destructive ops without the safety ladder (CB-8).
 - Do not wire a new gate/checklist without proving it can fail — a deliberately broken case must go red first (CB-7).
+
+## Install
+
+```bash
+# As a Claude Code plugin (recommended)
+/plugin marketplace add DevOtts/review-it
+/plugin install review-it@devotts
+
+# Or as a standalone skill package
+npx skills add DevOtts/review-it
+```
+
+Getting started: `/review-it qa/test-plan-master.md` runs a plan-phase Test Contract against your build; `/review-it PR #42` reviews a PR; `/review-it prod` verifies a deploy. See `docs/usage.md`.
+
+## Security considerations
+
+- Read-mostly by design: the skill writes only its report/ledger conventions in consumer repos (`.review-it/`, `qa/test-plan-derived.md`) — never code, never config (CB-8).
+- Never proposes new credential storage; credential operations are always human-gated, and rotations are verified by live call (R5/CB-6).
+- Authenticated browser sessions route to chrome-cdp-control with its per-write confirmation gate; autonomous QA never touches a logged-in session.
+- Destructive operations require the full safety ladder (backup → grep → soft-delete → soak → hard-delete → verify) and explicit authorization.
 
 ---
 _Authored by [DevOtts](https://github.com/DevOtts)._
