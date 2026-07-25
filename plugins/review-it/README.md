@@ -7,4 +7,4 @@ emits one evidence-backed report where VERIFIED is a ledger lookup.
 
 See the repository root README for install and structure. The front door lives in
 `skills/review-it/SKILL.md`; the 11-rule gate catalog and the report format shared with
-fable-it live in `skills/references/`.
+build-it live in `skills/references/`.

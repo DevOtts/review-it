@@ -1,6 +1,6 @@
 # Vocabularies — classification axes, tiers, statuses
 
-The closed vocabulary every review-it mode (and fable-it, via `report-format.md`) speaks. Terms outside these sets may not appear in a report (CB-1).
+The closed vocabulary every review-it mode (and build-it, via `report-format.md`) speaks. Terms outside these sets may not appear in a report (CB-1).
 
 ## 1. Two-axis test classification: TYPE × PERSISTENCE
 

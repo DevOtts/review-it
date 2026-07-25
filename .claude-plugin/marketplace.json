@@ -5,7 +5,7 @@
     "name": "DevOtts",
     "url": "https://github.com/DevOtts"
   },
-  "description": "DevOtts marketplace for Claude Code plugins. Add this repo, then install review-it (the QA front door) or prompt-it (the intent compiler) — shares the `devotts` namespace with fable-it and plan-it.",
+  "description": "DevOtts marketplace for Claude Code plugins. Add this repo, then install review-it (the QA front door) or prompt-it (the intent compiler) — shares the `devotts` namespace with build-it and plan-it.",
   "plugins": [
     {
       "name": "prompt-it",
@@ -34,7 +34,7 @@
       "name": "review-it",
       "source": "./plugins/review-it",
       "version": "1.0.0",
-      "description": "The QA front door of the DevOtts lifecycle family — plan-it plans, fable-it builds, review-it verifies. Runs the plan-phase Test Contract to prove the build obeys the plan, enforces an 11-rule gate catalog (wrong-layer verification, presence-vs-operability, single-read evidence, narration-as-proof, oracle provenance…), verifies third-party side-effects and staging/prod deploys, and emits one evidence-backed report format shared with fable-it.",
+      "description": "The QA front door of the DevOtts lifecycle family — plan-it plans, build-it builds, review-it verifies. Runs the plan-phase Test Contract to prove the build obeys the plan, enforces an 11-rule gate catalog (wrong-layer verification, presence-vs-operability, single-read evidence, narration-as-proof, oracle provenance…), verifies third-party side-effects and staging/prod deploys, and emits one evidence-backed report format shared with build-it.",
       "author": {
         "name": "DevOtts",
         "url": "https://github.com/DevOtts"

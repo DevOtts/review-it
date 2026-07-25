@@ -18,7 +18,7 @@ Count: 7 · [REAL]: 0
 |---|---|---|---|---|
 | T-E1-01 | e2e | — | Given a plan-it Test Contract with 3 cases (1 pass, 1 fail, 1 unreachable-[REAL]); When `/review-it <contract>` runs; Then the report classifies each row | Report contains exactly PASS / FAIL / INV(+named blocker); zero rows with any other status; a preflight line names which app/branch/checkout was under test (R9) |
 | T-E1-02 | unit | — | Given a case whose target is unreachable; When the run evaluates it; Then it is INV not PASS not FAIL | Row = `IMPLEMENTED-NOT-VERIFIED` with a non-empty blocker string tagged temporary\|structural |
-| T-E1-03 | e2e | — | Given a target needing functional UI QA and one needing an authenticated real-Chrome write; When routing decides; Then each goes to its specialist | contract-qa → `fable-it:full-qa`; real-Chrome write → `fable-it:chrome-cdp-control`; no inlined copy of either in review-it's own SKILL files (grep proves reference-by-name) |
+| T-E1-03 | e2e | — | Given a target needing functional UI QA and one needing an authenticated real-Chrome write; When routing decides; Then each goes to its specialist | contract-qa → `build-it:full-qa`; real-Chrome write → `build-it:chrome-cdp-control`; no inlined copy of either in review-it's own SKILL files (grep proves reference-by-name) |
 | T-E1-04 | e2e | — | Given an LLM-function eval target, a failing-fix-loop target, and a parallel-worktree need; When routing decides; Then correct specialist each | make-eval / iterate / parallel-lifecycle invoked by name; parallel-lifecycle assumed as dependency, not re-implemented |
 | T-E1-05 | integration | — | Given the built plugin repo; When packaging is validated; Then Devotts-family structure + attribution present | `.claude-plugin/marketplace.json` + `plugins/review-it/.claude-plugin/plugin.json` valid JSON; every SKILL.md has `author: DevOtts` + `author_url` frontmatter and the footer line |
 | T-E1-06 | e2e | — | Given a target WITH a plan-it artifact but no full Test Contract — only DoDs + goals (the common case); When `/review-it` runs the no-contract ladder (FR1.5); Then it locates the DoDs/goals as an AUTHORED oracle, expands them into cases, and labels provenance | Ladder step (a) resolves the DoDs/goals; derived cases run; every verdict row carries `AUTHORED` (oracle = plan DoD/goal); a `qa/test-plan-derived.md` is persisted; run does NOT refuse |
@@ -55,7 +55,7 @@ Count: 1 · [REAL]: 0
 
 | ID | Type | [REAL] | Given / When / Then | Assertion |
 |---|---|---|---|---|
-| T-E4-01 | integration | — | Given the superseded skills; When deprecation lands; Then no drifting duplicate remains | `~/.claude/skills/full-qa/SKILL.md` is a pointer to fable-it's copy (no duplicated logic body); Engine-Core `review-pr` → `.claude/review-config.md` config + pointer; fable-it/plan-it READMEs cross-link the new review stage |
+| T-E4-01 | integration | — | Given the superseded skills; When deprecation lands; Then no drifting duplicate remains | `~/.claude/skills/full-qa/SKILL.md` is a pointer to build-it's copy (no duplicated logic body); Engine-Core `review-pr` → `.claude/review-config.md` config + pointer; build-it/plan-it READMEs cross-link the new review stage |
 
 ## E5 — dogfood + community launch  (`epic/E5-dogfood-launch`)
 
@@ -65,7 +65,7 @@ Count: 3 · [REAL]: 2
 |---|---|---|---|---|
 | T-E5-01 | e2e | [REAL] | Given one real recent feature/PR; When `/review-it` runs end-to-end against it; Then it produces a real report | Report generated on a genuine target with real tool-result evidence rows (not synthetic); at least one gate rule exercised on real code |
 | T-E5-02 | e2e | [REAL] | Given the dogfood report; When a fresh-context verifier (DoD + report + evidence only, no build transcript) challenges it; Then every VERIFIED row survives or is demoted | Report survives the challenge; the R10 debrief question ("did any row get a false VERIFIED, which primitive would have caught it") is answered in the run |
-| T-E5-03 | integration | — | Given the finished repo; When compared to fable-it/plan-it conventions; Then structure + docs match for community launch | README (+assets), CHANGELOG, LICENSE, docs/, valid marketplace.json + plugin.json; `skill-publisher` dry-run passes; layout parity with sibling plugins |
+| T-E5-03 | integration | — | Given the finished repo; When compared to build-it/plan-it conventions; Then structure + docs match for community launch | README (+assets), CHANGELOG, LICENSE, docs/, valid marketplace.json + plugin.json; `skill-publisher` dry-run passes; layout parity with sibling plugins |
 
 ---
 _Authored by [DevOtts](https://github.com/DevOtts)._

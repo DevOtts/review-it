@@ -16,7 +16,7 @@
     <text x="115" y="68" fill="#e2e8f0">plan-it <tspan fill="#94a3b8">plans</tspan></text>
     <line x1="190" y1="63" x2="240" y2="63" stroke="#94a3b8" stroke-width="2" marker-end="url(#arr)"/>
     <rect x="240" y="40" width="150" height="46" rx="8" fill="#334155" stroke="#64748b"/>
-    <text x="315" y="68" fill="#e2e8f0">fable-it <tspan fill="#94a3b8">builds</tspan></text>
+    <text x="315" y="68" fill="#e2e8f0">build-it <tspan fill="#94a3b8">builds</tspan></text>
     <line x1="390" y1="63" x2="440" y2="63" stroke="#94a3b8" stroke-width="2" marker-end="url(#arr)"/>
     <rect x="440" y="34" width="180" height="58" rx="10" fill="#065f46" stroke="#34d399" stroke-width="2"/>
     <text x="530" y="60" fill="#ecfdf5" font-weight="700">review-it</text>

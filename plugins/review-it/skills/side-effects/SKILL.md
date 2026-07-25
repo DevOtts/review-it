@@ -21,12 +21,12 @@ Gates applied here: **R1 wrong-layer**, **R3 read-stability**, **R5 directive-lo
 For each third-party write in the DoD/contract row:
 1. Name the target system, entity/table, and the REAL destination (not only a scratch/sandbox twin — FR5.3: the real target's constraints, primary fields, required columns are part of the assertion).
 2. Name both read-back surfaces: the API read (endpoint, auth plane) and the UI surface (page/view a human checks), when both exist.
-3. Credentials: apply gate R5 — grep the standing rulings and use the incumbent pattern; never propose a new storage location. Authenticated real-browser read-backs route to `fable-it:chrome-cdp-control` (per-write confirmation gate intact); API read-backs run under the project's existing integration credentials.
+3. Credentials: apply gate R5 — grep the standing rulings and use the incumbent pattern; never propose a new storage location. Authenticated real-browser read-backs route to `build-it:chrome-cdp-control` (per-write confirmation gate intact); API read-backs run under the project's existing integration credentials.
 
 ## Step 2 — Read back from BOTH surfaces (R1)
 
 - **API GET** — fetch the written record; assert field values against the oracle (expected values from the contract/DoD — carry the row's AUTHORED|DERIVED tag per R11).
-- **UI render** — load the target system's own UI on that record and assert display semantics: the primary/display field renders, computed columns populated, the record is findable in the view a human uses. UI verification routes to `fable-it:full-qa` / CDP execution — this mode owns *what* must be proven, not the browser mechanics (CB-3).
+- **UI render** — load the target system's own UI on that record and assert display semantics: the primary/display field renders, computed columns populated, the record is findable in the view a human uses. UI verification routes to `build-it:full-qa` / CDP execution — this mode owns *what* must be proven, not the browser mechanics (CB-3).
 - Either surface alone is insufficient when both exist: **API-only ⇒ `INV-in-UI`**, UI-only ⇒ INV with blocker `api-unread`. When the system genuinely has no UI, record that fact in the row (structural) and API read-back may stand alone.
 
 ## Step 3 — Stability before verdict (R3)
@@ -41,7 +41,7 @@ Emit one row per write per `references/report-format.md`: ledger-backed status (
 
 - Do not accept sender-side evidence (2xx from our API, queue ack, our DB row) as landing proof — wrong layer (R1).
 - Do not verify only in a scratch base/table when the DoD targets a real one (FR5.3).
-- Do not inline CDP/browser logic or QA loops — route to `fable-it:chrome-cdp-control` / `fable-it:full-qa` / `fable-it:iterate` by name (CB-3).
+- Do not inline CDP/browser logic or QA loops — route to `build-it:chrome-cdp-control` / `build-it:full-qa` / `build-it:iterate` by name (CB-3).
 - Do not declare a false regression off one null read (R3).
 
 ---

@@ -7,7 +7,7 @@
 </h3>
 
 <p>
-  plan-it plans. fable-it builds. <strong>review-it verifies.</strong><br>
+  plan-it plans. build-it builds. <strong>review-it verifies.</strong><br>
   The independent verification leg of the plan → build → review triangle.
 </p>
 
@@ -57,7 +57,7 @@ DERIVED green means "self-consistent," never "obeys the plan." **No self-graded 
 ## Installation
 
 ```bash
-# 1. Add the DevOtts marketplace (once — shared with fable-it / plan-it)
+# 1. Add the DevOtts marketplace (once — shared with build-it / plan-it)
 /plugin marketplace add DevOtts/review-it
 
 # 2. Install
@@ -88,7 +88,7 @@ Then hand it a target:
    ▼
   GATES  — 11 rules, applied in every mode
    ▼
-  REPORT — one format, shared with fable-it's evidence ledger
+  REPORT — one format, shared with build-it's evidence ledger
 ```
 
 - **Preflight (R9)** — prove *which* app/branch/checkout is under test before any verdict.
@@ -132,16 +132,16 @@ Full specs (each trigger → test → action):
 | side-effects | `plugins/review-it/skills/side-effects/` | third-party write verification (the Airtable class) |
 | deploy-verify | `plugins/review-it/skills/deploy-verify/` | staging/prod: deployed-code ladder → READY / NOT-READY |
 | pr-review | `plugins/review-it/skills/pr-review/` | severity-tiered review process, loads `.claude/review-config.md` |
-| references | `plugins/review-it/skills/references/` | gate catalog · report format (shared with fable-it) · vocabularies · authoring standards · CI guidance |
+| references | `plugins/review-it/skills/references/` | gate catalog · report format (shared with build-it) · vocabularies · authoring standards · CI guidance |
 
 ## The family
 
-| | [`plan-it`](https://github.com/DevOtts/plan-it) | [`fable-it`](https://github.com/DevOtts/fable-it) | `review-it` |
+| | [`plan-it`](https://github.com/DevOtts/plan-it) | [`build-it`](https://github.com/DevOtts/build-it) | `review-it` |
 |---|---|---|---|
 | Job | discovery → spec → agile split | goal + DoD → delivery | contract → verified verdicts |
 | The bridge | authors the Test Contract | adopts it as its DoD | runs it against the build |
 
-review-it consumes plan-it's Test Contract 1:1 and feeds its verdict rows into fable-it's
+review-it consumes plan-it's Test Contract 1:1 and feeds its verdict rows into build-it's
 evidence ledger — one report format, hosted here, both plugins point at it.
 
 ## Security

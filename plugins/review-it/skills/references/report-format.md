@@ -1,6 +1,6 @@
-# Report format — the single source of truth (shared with fable-it)
+# Report format — the single source of truth (shared with build-it)
 
-One report schema for every review-it mode, and the same evidence-ledger row schema fable-it uses — **this file is the single source of truth for both plugins** (PRD D2/CB-5: review-it hosts it; fable-it points here). If you change a field, you are changing fable-it's ledger too — don't, without a dated amendment.
+One report schema for every review-it mode, and the same evidence-ledger row schema build-it uses — **this file is the single source of truth for both plugins** (PRD D2/CB-5: review-it hosts it; build-it points here). If you change a field, you are changing build-it's ledger too — don't, without a dated amendment.
 
 ## 1. Evidence-ledger row (the atom)
 
@@ -17,7 +17,7 @@ One entry per criterion per verification attempt, appended **the moment the atte
 
 **The claim rule:** a row may be reported PASS/VERIFIED **only if the ledger holds a passing same-session tool result for it**. VERIFIED is a lookup, not a judgment call. No entry ⇒ the row is IMPLEMENTED-NOT-VERIFIED, mechanically.
 
-Location: consumer repo `.review-it/` for standalone runs; when conducted by fable-it, append to its `.taskstate/evidence.md` instead of keeping a competing ledger.
+Location: consumer repo `.review-it/` for standalone runs; when conducted by build-it, append to its `.taskstate/evidence.md` instead of keeping a competing ledger.
 
 ## 2. Report skeleton
 

@@ -31,7 +31,7 @@ Preflight identity applies (R9): prove which env/URL/port you are hitting before
 Pull the consumer's Test Contract (or derived contract) and re-run its `[REAL]`-tagged rows against staging/prod — this is the "test it working there" leg. Tier-2 rules (vocabularies §2) bind:
 - These runs **never block a PR** — they inform the release verdict.
 - Unreachable live target ⇒ honest `IMPLEMENTED-NOT-VERIFIED` with named blocker (`temporary|structural`) — never a mock stand-in ([REAL] is never VERIFIED on a mock).
-- Execution routes by row shape: UI rows → `fable-it:full-qa`, API/state rows → direct calls with ledger entries, fix loops → `fable-it:iterate` (CB-3).
+- Execution routes by row shape: UI rows → `build-it:full-qa`, API/state rows → direct calls with ledger entries, fix loops → `build-it:iterate` (CB-3).
 - Human-reserved live actions (prod credential flips, first live write) are `BLOCK` stop-gates carrying the R4 first-look ask — "ping me before acting," or poll to observe first state; the human is never the un-instrumented first tester.
 
 ## Step 3 — Release checklist (FR4.3)
@@ -53,7 +53,7 @@ Emit `READY` / `NOT-READY` assembled ONLY from the per-item rows: any ladder FAI
 - Do not run functional checks before the ladder proves the new code serves — you'd verify the old build.
 - Do not mock an unreachable staging/prod target — INV with named blocker (Tier-2).
 - Do not perform human-reserved prod actions autonomously (R4; BLOCK stop-gate).
-- Do not inline QA/fix-loop/browser logic — route to `fable-it:full-qa` / `fable-it:iterate` / `fable-it:chrome-cdp-control` by name (CB-3).
+- Do not inline QA/fix-loop/browser logic — route to `build-it:full-qa` / `build-it:iterate` / `build-it:chrome-cdp-control` by name (CB-3).
 
 ---
 _Authored by [DevOtts](https://github.com/DevOtts)._

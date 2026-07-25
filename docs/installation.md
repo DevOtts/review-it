@@ -3,7 +3,7 @@
 ## As a Claude Code plugin (recommended)
 
 ```bash
-# Add the DevOtts marketplace (once — it's shared with fable-it and plan-it)
+# Add the DevOtts marketplace (once — it's shared with build-it and plan-it)
 /plugin marketplace add DevOtts/review-it
 
 # Install the plugin
@@ -17,7 +17,7 @@ This installs the front door (`/review-it`) plus the bundled `side-effects`,
 
 - **`parallel-lifecycle`** — hard dependency for isolated parallel runs (worktrees,
   ports, browsers). Assumed installed; review-it never re-implements it.
-- **fable-it's bundled specialists** (`full-qa`, `iterate`, `chrome-cdp-control`) and
+- **build-it's bundled specialists** (`full-qa`, `iterate`, `chrome-cdp-control`) and
   **`make-eval`** — routed to by name when present. On hosts where a routed skill is
   missing, review-it performs that phase inline following the same principle and says so
   in the report (degrade, never break).

@@ -25,7 +25,7 @@ row, and reports 100%-or-honest-INV.
 review-it never refuses and never self-grades. The no-contract ladder:
 
 1. **Locate** an authored oracle — plan-it Test Contract → plan-it DoDs/goals →
-   fable-it DoD/ledger → PRD/epic criteria → PR/issue/commit description.
+   build-it DoD/ledger → PRD/epic criteria → PR/issue/commit description.
 2. **Derive** cases from the change surface only if nothing is found.
 3. **Confirm** derived cases with you before running (or stamp the run
    `DERIVED-UNCONFIRMED` under autonomy).
@@ -36,7 +36,7 @@ review-it never refuses and never self-grades. The no-contract ladder:
 
 ## Reading the report
 
-Reports land in `.review-it/` (or fable-it's ledger when conducted). The status
+Reports land in `.review-it/` (or build-it's ledger when conducted). The status
 vocabulary is closed: `PASS` / `FAIL` / `IMPLEMENTED-NOT-VERIFIED` (+ named blocker,
 `temporary|structural`), skips `SKIP-no-script` / `SKIP-out-of-scope` / `BLOCK`.
 Deploy-verify adds a `READY / NOT-READY` release verdict. Every run ends with the R10
@@ -47,9 +47,9 @@ debrief: *did any row get a false VERIFIED, and which primitive would have caugh
 Drop a `.claude/review-config.md` checklist in the consumer repo (sections tagged
 `[blocking]` / `[advisory]`). Zero config works too — a generic checklist applies.
 
-## Under fable-it
+## Under build-it
 
-fable-it invokes review-it as its QA phase; verdict rows feed fable-it's
+build-it invokes review-it as its QA phase; verdict rows feed build-it's
 `.taskstate/evidence.md` directly — same row schema, one source of truth
 (`references/report-format.md`).
 

@@ -1,6 +1,6 @@
 ---
 name: review-it
-description: "The QA front door of the DevOtts lifecycle family \u2014 plan-it plans, fable-it builds, /review-it verifies. PRIMARY mission: run the unit tests, e2e tests and test-cases generated at plan phase to prove the build obeys the plan \u2014 the independent verification leg of the plan\u2192build\u2192review triangle. Also verifies third-party side-effects (the Airtable class), staging/prod deploys (deployed-code ladder + [REAL] re-runs), and runs a severity-tiered PR review. Routes execution to full-qa, iterate, chrome-cdp-control, make-eval and parallel-lifecycle \u2014 never re-implements them \u2014 and enforces an 11-rule gate catalog that makes false-VERIFIED claims un-shippable. Invoked with no Test Contract it never refuses and never self-grades \u2014 it runs the no-contract ladder and tags every verdict AUTHORED or DERIVED. Use when the user says \"/review-it\", \"review it\", \"verify the build\", \"run the test contract\", \"QA this feature\", \"verify this deploy\", \"review this PR\", or when fable-it reaches its QA phase."
+description: "The QA front door of the DevOtts lifecycle family \u2014 plan-it plans, build-it builds, /review-it verifies. PRIMARY mission: run the unit tests, e2e tests and test-cases generated at plan phase to prove the build obeys the plan \u2014 the independent verification leg of the plan\u2192build\u2192review triangle. Also verifies third-party side-effects (the Airtable class), staging/prod deploys (deployed-code ladder + [REAL] re-runs), and runs a severity-tiered PR review. Routes execution to full-qa, iterate, chrome-cdp-control, make-eval and parallel-lifecycle \u2014 never re-implements them \u2014 and enforces an 11-rule gate catalog that makes false-VERIFIED claims un-shippable. Invoked with no Test Contract it never refuses and never self-grades \u2014 it runs the no-contract ladder and tags every verdict AUTHORED or DERIVED. Use when the user says \"/review-it\", \"review it\", \"verify the build\", \"run the test contract\", \"QA this feature\", \"verify this deploy\", \"review this PR\", or when build-it reaches its QA phase."
 version: 1.0.0
 license: MIT
 author: DevOtts
@@ -15,7 +15,7 @@ keywords: [qa, verification, test-contract, deploy-verify, side-effects, pr-revi
 
 # /review-it — the QA front door
 
-You are the verification leg of the lifecycle triangle: **plan-it plans → fable-it builds → you verify**. Your primary job is to take the Test Contract authored at plan phase and prove — with evidence, not narration — that the build obeys it. Everything else (side-effects, deploy verification, PR review) orbits that core.
+You are the verification leg of the lifecycle triangle: **plan-it plans → build-it builds → you verify**. Your primary job is to take the Test Contract authored at plan phase and prove — with evidence, not narration — that the build obeys it. Everything else (side-effects, deploy verification, PR review) orbits that core.
 
 Two failures define your reason to exist (the Airtable postmortem): a "VERIFIED" UI with 4 operability bugs no test ever exercised, and a third-party write whose record rendered empty in the target system's own UI — both caught by a human, after the report said green. Your gate catalog makes those, and nine sibling failure classes, mechanically un-shippable.
 
@@ -33,7 +33,7 @@ Two failures define your reason to exist (the Airtable postmortem): a "VERIFIED"
    ▼
   GATES  — references/gate-catalog.md (R1–R11), applied in EVERY mode
    ▼
-  REPORT — references/report-format.md (one format, shared with fable-it's evidence ledger)
+  REPORT — references/report-format.md (one format, shared with build-it's evidence ledger)
 ```
 
 Shared vocabulary (statuses, tiers, TYPE×PERSISTENCE, skip taxonomy, AUTHORED/DERIVED) lives in `references/vocabularies.md`. Test-authoring standards in `references/authoring-standards.md`. CI-gate wiring guidance (reference only, not an executable mode) in `references/ci-gate-guidance.md`.
@@ -69,9 +69,9 @@ Every verdict needs an **oracle** — the source of the *expected outcome*. Wher
 
 Run the ladder in order; stop at the first hit:
 
-- **(a) Locate** an authored oracle, in priority order: plan-it Test Contract → **plan-it DoDs + goals** (authored before the build — partial but legitimate) → fable-it DoD / evidence ledger → PRD/epic acceptance criteria → PR/issue/commit description. Any hit ⇒ oracle is **AUTHORED**. Expanding a DoD/goal into runnable cases keeps AUTHORED provenance — the *expected value* still predates the build.
+- **(a) Locate** an authored oracle, in priority order: plan-it Test Contract → **plan-it DoDs + goals** (authored before the build — partial but legitimate) → build-it DoD / evidence ledger → PRD/epic acceptance criteria → PR/issue/commit description. Any hit ⇒ oracle is **AUTHORED**. Expanding a DoD/goal into runnable cases keeps AUTHORED provenance — the *expected value* still predates the build.
 - **(b) Derive** — only if (a) found nothing: reverse-engineer candidate cases from the change surface (diff, endpoints, UI controls touched, third-party writes) using plan-it's test-type-selection grammar and `make-eval` for LLM boundaries. Anchor every expected value to an external source where one exists; where the only available oracle is the implementation itself, tag the case **DERIVED** and flag it.
-- **(c) Confirm** — present derived/expanded cases for a quick human ack/edit BEFORE running (preserves "registered before verification"). Under fable-it autonomy with no human available: proceed, but stamp the whole run **DERIVED-UNCONFIRMED**.
+- **(c) Confirm** — present derived/expanded cases for a quick human ack/edit BEFORE running (preserves "registered before verification"). Under build-it autonomy with no human available: proceed, but stamp the whole run **DERIVED-UNCONFIRMED**.
 - **(d) Label** — per R11, every verdict row carries its provenance tag. A DERIVED green means **"self-consistent"** — it may NEVER be reported as VERIFIED-against-plan (CB-9: no self-graded green). Cases with no anchorable oracle go to an **accepted-gaps register** in the report — no silent caps.
 - **(e) Persist** — write the resulting contract to `qa/test-plan-derived.md` in the consumer repo, so this review becomes durable, promotable coverage plan-it can absorb.
 
@@ -85,9 +85,9 @@ Run the ladder in order; stop at the first hit:
 
 | Work | Route to |
 |---|---|
-| Functional / CDP UI QA against a test plan | `fable-it:full-qa` |
-| Authenticated real-Chrome action (user's logged-in browser) | `fable-it:chrome-cdp-control` |
-| Diagnose → fix → test loops | `fable-it:iterate` |
+| Functional / CDP UI QA against a test plan | `build-it:full-qa` |
+| Authenticated real-Chrome action (user's logged-in browser) | `build-it:chrome-cdp-control` |
+| Diagnose → fix → test loops | `build-it:iterate` |
 | LLM-function evals (closed-label classifiers, rubric outputs) | `make-eval` |
 | Worktree / port / browser isolation for parallel runs | `parallel-lifecycle` (hard dependency — assumed installed, never absorbed) |
 
@@ -103,7 +103,7 @@ The full protocol and prompts live in `references/report-format.md`.
 
 ## Step 6 — Report (FR1.4)
 
-Emit exactly one report in the `references/report-format.md` schema, to the consumer repo's `.review-it/` (or `.fable-it-reports/` when conducted by fable-it — in that case feed rows into fable-it's evidence ledger instead of issuing a competing verdict).
+Emit exactly one report in the `references/report-format.md` schema, to the consumer repo's `.review-it/` (or `.build-it-reports/` when conducted by build-it — in that case feed rows into build-it's evidence ledger instead of issuing a competing verdict).
 
 Closed status vocabulary (CB-1) — no other states may appear:
 `PASS` / `FAIL` / `IMPLEMENTED-NOT-VERIFIED` (+named blocker, `temporary|structural`) · skips: `SKIP-no-script` / `SKIP-out-of-scope` / `BLOCK`.
@@ -113,7 +113,7 @@ Every row carries its oracle-provenance tag (`AUTHORED` | `DERIVED`). INV rows a
 
 - Never propose a new credential storage location. Before touching any credential question, grep the standing rulings (CONTRACT / kickoff / CLAUDE.md / canonical creds files such as `.secrets/.full.credentials`, `LOCAL-CREDENTIALS.md`) and quote the incumbent ruling back (gate R5). Default to the incumbent pattern.
 - Credential operations (rotate / revoke / flip) are always human-gated stop-gates; a rotation is verified by a live call, never by the tracker.
-- Real-Chrome sessions route to `fable-it:chrome-cdp-control` with its per-write confirmation gate; autonomous QA never touches an authenticated session.
+- Real-Chrome sessions route to `build-it:chrome-cdp-control` with its per-write confirmation gate; autonomous QA never touches an authenticated session.
 
 ## What NOT to do
 
