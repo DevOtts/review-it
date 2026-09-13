@@ -1,6 +1,6 @@
-# Gate catalog — the 11 rules (R1–R11)
+# Gate catalog — the 12 rules (R1–R12)
 
-The gates that make false-VERIFIED claims un-shippable. Every mode applies every applicable gate to every row before accepting a PASS. Each rule is written as **trigger → test → action**. Evidence trail for R1–R10: `research-SYNTHESIS.md` §3 in the review-it repo (the Airtable postmortem + corpus mining); R11 added in the PRD v1.1 amendment.
+The gates that make false-VERIFIED claims un-shippable. Every mode applies every applicable gate to every row before accepting a PASS. Each rule is written as **trigger → test → action**. Evidence trail for R1–R10: `research-SYNTHESIS.md` §3 in the review-it repo (the Airtable postmortem + corpus mining); R11 added in the PRD v1.1 amendment; R12 added 2026-09-12 (drain-0912, C2-skills discovery #4).
 
 **CB-7 discipline:** a gate you wire is not protection until a deliberately broken case has made it go red. Verify the verifier.
 
@@ -71,6 +71,12 @@ The gates that make false-VERIFIED claims un-shippable. Every mode applies every
 - **Trigger:** any run whose cases were not authored 1:1 from a plan-it Test Contract.
 - **Test:** does every verdict row carry an `AUTHORED` | `DERIVED` tag classifying where its *expected outcome* (the oracle) originates — and is no DERIVED-oracle green labelled VERIFIED-against-plan?
 - **Action:** run the FR1.5 no-contract ladder (locate → derive → confirm → label → persist). **AUTHORED** = the oracle traces to a pre-build authored source (plan-it Test Contract / DoDs / goals, external spec, PR/issue description). **DERIVED** = the expected value was reconstructed from the implementation/diff itself. Deriving *cases* around an AUTHORED oracle (expanding a goal) stays AUTHORED; deriving the *expected value* from the code is DERIVED, needs human confirm (or a `DERIVED-UNCONFIRMED` run stamp under autonomy), and its green means only "self-consistent" — never "obeys the plan" (CB-9). Unanchored cases go to the accepted-gaps register — no silent caps.
+
+## R12 — quote-your-own-skips (a clean verdict must show its skips)
+
+- **Trigger:** any gate/check output about to be accepted as a clean PASS — `pre-push`, CI-equivalent local suites, `gate-check.mjs`, or any multi-leg verification script.
+- **Test:** was the gate's FULL output grepped for skip/warn markers (`[skip]`, `SKIPPED`, `WARN`, `N/A`, etc.), and are any found quoted alongside the clean verdict line — not just the verdict line itself?
+- **Action:** a terminal `[OK]`/PASS line is not a full PASS if a leg upstream logged a skip — quote every skip/warn line the gate itself printed, in the same report that cites the clean verdict (R12 mirrors the build-side convention: "a clean verdict must quote its own skips"). Silence about a skip is a claim of full coverage the run never earned. Canonical incident: `pre-push` printed `[OK] pre-push checks clean.` while the doc-drift leg had been silently skipped (2026-09-11).
 
 ---
 _Authored by [DevOtts](https://github.com/DevOtts)._
