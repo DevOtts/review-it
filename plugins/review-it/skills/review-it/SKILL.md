@@ -1,7 +1,7 @@
 ---
 name: review-it
 description: "The QA front door of the DevOtts lifecycle family \u2014 plan-it plans, build-it builds, /review-it verifies. PRIMARY mission: run the unit tests, e2e tests and test-cases generated at plan phase to prove the build obeys the plan \u2014 the independent verification leg of the plan\u2192build\u2192review triangle. Also verifies third-party side-effects (the Airtable class), staging/prod deploys (deployed-code ladder + [REAL] re-runs), and runs a severity-tiered PR review. Routes execution to full-qa, iterate, chrome-cdp-control, make-eval and parallel-lifecycle \u2014 never re-implements them \u2014 and enforces an 11-rule gate catalog that makes false-VERIFIED claims un-shippable. Invoked with no Test Contract it never refuses and never self-grades \u2014 it runs the no-contract ladder and tags every verdict AUTHORED or DERIVED. Use when the user says \"/review-it\", \"review it\", \"verify the build\", \"run the test contract\", \"QA this feature\", \"verify this deploy\", \"review this PR\", or when build-it reaches its QA phase."
-version: 1.0.0
+version: 1.1.0
 license: MIT
 author: DevOtts
 author_url: https://github.com/DevOtts
@@ -36,7 +36,7 @@ Two failures define your reason to exist (the Airtable postmortem): a "VERIFIED"
   REPORT — references/report-format.md (one format, shared with build-it's evidence ledger)
 ```
 
-Shared vocabulary (statuses, tiers, TYPE×PERSISTENCE, skip taxonomy, AUTHORED/DERIVED) lives in `references/vocabularies.md`. Test-authoring standards in `references/authoring-standards.md`. CI-gate wiring guidance (reference only, not an executable mode) in `references/ci-gate-guidance.md`.
+Shared vocabulary (statuses, tiers, TYPE×PERSISTENCE, skip taxonomy, AUTHORED/DERIVED) lives in `references/vocabularies.md`. When run under do-it, `references/do-it-integration.md` governs the `it-result/1` file, the `.do-it/review/` artifacts and the severity classes. Test-authoring standards in `references/authoring-standards.md`. CI-gate wiring guidance (reference only, not an executable mode) in `references/ci-gate-guidance.md`.
 
 ## Step 0 — Preflight: prove WHAT is under test (gate R9)
 
@@ -104,6 +104,8 @@ The full protocol and prompts live in `references/report-format.md`.
 ## Step 6 — Report (FR1.4)
 
 Emit exactly one report in the `references/report-format.md` schema, to the consumer repo's `.review-it/` (or `.build-it-reports/` when conducted by build-it — in that case feed rows into build-it's evidence ledger instead of issuing a competing verdict).
+
+**Under do-it** (a `run_id` is supplied; see `references/do-it-integration.md`): also re-cut `.do-it/review/ATTENDED-GATE.html` whole every round, write `.do-it/review/roteiro.json` (frozen, fingerprinted to detect a repeated round) and `.do-it/review/findings.json` (severity: blocker, major, minor, nit), then write `it-result/1` atomically as the last act of the stage (PASS→VERIFIED, FAIL→BLOCKED; never write `state.json`). Resolve the root from `DO_IT_HOME`, else `{main checkout}/.do-it`.
 
 Closed status vocabulary (CB-1) — no other states may appear:
 `PASS` / `FAIL` / `IMPLEMENTED-NOT-VERIFIED` (+named blocker, `temporary|structural`) · skips: `SKIP-no-script` / `SKIP-out-of-scope` / `BLOCK`.
