@@ -2,6 +2,14 @@
 
 All notable changes to the `review-it` plugin.
 
+## [2.0.0] — 2026-10-14
+
+Major release: review-it moves to 2.0.0 together with the rest of the *-it lifecycle family (prompt-it 1.0.0, plan-it 5.0.0, build-it 4.0.0, conclude-it 2.0.0, parallel-lifecycle 1.0.0). No behaviour change beyond 1.1.0.
+
+### Changed
+- Version bump in `plugin.json`, `marketplace.json` and both `review-it` `SKILL.md` frontmatters.
+- prompt-it pin 0.3.0 → 1.0.0 (exact) in `.claude-plugin/marketplace.json`.
+
 ## [1.1.0] — 2026-10-14
 
 do-it integration (companion-change catalog, review-it section). Additive; standalone behaviour unchanged.
