@@ -56,7 +56,10 @@ export function proseLines(text) {
 
 const VERDICT_LINE = /^verdict\s*:\s*(.*)$/i;
 const TASK_LINE = /^task\s*:\s*(.*)$/i;
-const cleanVerdict = (v) => v.trim().replace(/^[`*]+|[`*.,;]+$/g, '').toUpperCase();
+// The value must be exactly PASS or FAIL (the format in report-format 2b/2c). No case folding and no
+// stripping of markdown or punctuation: a lenient reader here would sync a task as verified from a
+// report that build-it's checkpoint reader rejects, so both read the value the same strict way.
+const cleanVerdict = (v) => v.trim();
 
 // Returns { overall, blocks: [{task, verdict, note}], errors: [..] }. Any error means: write nothing.
 export function parseReport(text) {
