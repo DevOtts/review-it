@@ -33,7 +33,7 @@
     {
       "name": "review-it",
       "source": "./plugins/review-it",
-      "version": "2.0.0",
+      "version": "2.1.0",
       "description": "The QA front door of the DevOtts lifecycle family — plan-it plans, build-it builds, review-it verifies. Runs the plan-phase Test Contract to prove the build obeys the plan, enforces an 11-rule gate catalog (wrong-layer verification, presence-vs-operability, single-read evidence, narration-as-proof, oracle provenance…), verifies third-party side-effects and staging/prod deploys, and emits one evidence-backed report format shared with build-it.",
       "author": {
         "name": "DevOtts",

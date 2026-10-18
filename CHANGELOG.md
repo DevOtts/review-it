@@ -2,6 +2,28 @@
 
 All notable changes to the `review-it` plugin.
 
+## [2.1.0] — 2026-10-18
+
+Minor release. review-it can now write its per-task result into an implementation's `status.json`,
+and its reports can carry the checkpoint lines build-it gates on.
+
+### Added
+- Checkpoint header (report-format §2b): a checkpoint run's report carries `checkpoint: CP-NN` and
+  `verdict: PASS|FAIL`, which build-it's `checkpoints.mjs` reads. Runs that are not checkpoints
+  are unchanged.
+- `scripts/status-sync.mjs` (report-format §2c): after a report is written, each task's result goes
+  to `status.json` through build-it's `status-write`. A task verified after the honesty adapters is
+  set `verified` with a per-task verdict file that records the report path and its sha256; every
+  other task goes back to `in-progress` with a note. Only the report's overall verdict counts, text
+  inside code blocks and comments is ignored, and a report that contradicts itself (overall PASS
+  with a task that is not PASS) or is ambiguous is refused with nothing written.
+- Preflight step 5: when the target names an implementation folder, register the session with
+  init-it (`--role review`). It never blocks a review.
+
+### Known limits
+- `status-write` cannot authenticate the caller, so a verdict written by hand can still be passed
+  as review-it's. Treat `verified` as a claim, as the status output labels it.
+
 ## [2.0.0] — 2026-10-14
 
 Major release: review-it moves to 2.0.0 together with the rest of the *-it lifecycle family (prompt-it 1.0.0, plan-it 5.0.0, build-it 4.0.0, conclude-it 2.0.0, parallel-lifecycle 1.0.0). No behaviour change beyond 1.1.0.
