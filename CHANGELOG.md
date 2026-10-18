@@ -2,6 +2,26 @@
 
 All notable changes to the `review-it` plugin.
 
+## [2.1.1] — 2026-10-18
+
+Patch release, from the first real run of the do-it harness.
+
+### Fixed
+- `status-sync` reads the verdict value strictly: exactly `PASS` or `FAIL`. It used to upper-case the
+  value and strip backticks, asterisks and trailing punctuation, so a report with `verdict: pass` or
+  `verdict: **PASS**` synced a task as verified while build-it's checkpoint reader rejected the same
+  file. Such a report is now refused with "is not PASS or FAIL" and nothing is written.
+
+### Changed
+- report-format §2b says what a checkpoint verdict releases: the slices that depend on the reviewed
+  work and the promotion of that work, never independent work (the old text said build-it decides
+  whether it may cross a boundary). It also states the reading rule: one overall `verdict:` line,
+  code blocks and HTML comments ignored, and PASS together with FAIL is not a pass.
+- The marketplace is named `review-it`, and the install line is `review-it@review-it`. plan-it,
+  review-it, conclude-it and do-it all called theirs `devotts`, so adding two of them clashed;
+  `devotts` is now only the do-it hub. Someone who added this repo as `devotts` should remove that
+  entry and add `review-it`.
+
 ## [2.1.0] — 2026-10-18
 
 Minor release. review-it can now write its per-task result into an implementation's `status.json`,
