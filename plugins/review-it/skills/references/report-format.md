@@ -58,7 +58,7 @@ verdict: PASS|FAIL
 
 - `checkpoint:` is the id the caller passed (for example `CP-01`), copied verbatim.
 - `verdict:` is `PASS` only when every row in scope is VERIFIED after the honesty adapters (§4). Any row that is not VERIFIED makes it `FAIL`. Never write `PASS` on a partial run.
-- build-it reads these two lines to decide whether it may cross a boundary (`checkpoints.mjs check`). A report without them is treated as no verdict.
+- build-it reads these two lines (`checkpoints.mjs check` and `gate`) to decide what the checkpoint still holds: the slices that depend on the reviewed work and the promotion of that work. A checkpoint never holds independent work. Only one overall `verdict:` line counts: text inside code blocks and HTML comments is ignored, and a report that says both PASS and FAIL is not a pass. A report without the two lines is treated as no verdict.
 - Runs that are not checkpoints omit both lines. Their output does not change.
 
 ## 2c. Task results block (amendment 2026-10-18)
