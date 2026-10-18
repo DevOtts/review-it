@@ -61,7 +61,7 @@ DERIVED green means "self-consistent," never "obeys the plan." **No self-graded 
 /plugin marketplace add DevOtts/review-it
 
 # 2. Install
-/plugin install review-it@devotts
+/plugin install review-it@review-it
 
 # Or as a standalone skill package
 npx skills add DevOtts/review-it
