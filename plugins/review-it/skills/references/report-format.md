@@ -72,7 +72,10 @@ note: <why, required on FAIL>
 ```
 
 - The `task:` line is mandatory: the shared status writer refuses a verdict that does not name the task, and `status-sync.mjs` refuses a report with no `task:` block. A task is `PASS` only if every case behind it is VERIFIED after the honesty adapters (section 4).
-- For each PASS block `status-sync.mjs` cuts a one-task evidence file (`verdict-<TASK>.md`, beside the report) because the writer rejects a file that mixes PASS with a non-PASS verdict.
+- The report also carries one overall `verdict: PASS|FAIL` line in its header (the same line as 2b, written for every status-sync run, checkpoint or not), before the first `task:` block. A task is synced as verified only when the overall verdict is PASS **and** its own block says PASS. Overall FAIL or missing: nothing is verified, FAIL tasks go to in-progress, PASS tasks stay as they are.
+- Only report prose counts: lines inside ``` / ~~~ fences, 4-space indented code and HTML comments are ignored. A block is the `task:` line plus the non-blank lines right after it. Verdict values are exactly `PASS` or `FAIL`.
+- Ambiguity is refused (exit 1, nothing written): a task with two blocks, a block with two `verdict:` lines, two overall verdicts, any other verdict value, a `verdict:` line outside every block after the first task, or a task not on the board.
+- For each PASS block `status-sync.mjs` cuts a one-task evidence file (`verdict-<TASK>.md`, beside the report) because the writer rejects a file that mixes PASS with a non-PASS verdict. The file records `report:` (path) and `report_sha256:` so the claim can be traced to the exact report.
 - Runs without a `status.json` omit the block.
 
 ## 3. Statuses

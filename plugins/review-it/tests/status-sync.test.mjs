@@ -1,9 +1,10 @@
-// node --test plugins/review-it/tests
+// node --test plugins/review-it/tests/status-sync.test.mjs
 // Fixture implementation: T-01 reviewed PASS, T-02 reviewed FAIL. Asserts the status.json afterwards.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync, copyFileSync, realpathSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { tmpdir, homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,11 +32,11 @@ function fixture() {
   return { repo, dir, status: join(dir, 'status.json') };
 }
 const read = (f) => JSON.parse(readFileSync(f, 'utf8'));
-const sync = (repo, report) => node([SYNC, '--report', report, '--impl', 'demo', '--repo', repo, '--writer', WRITER], repo);
+const sync = (repo, report, script = SYNC) => node([script, '--report', report, '--impl', 'demo', '--repo', repo, '--writer', WRITER], repo);
 
 test('mixed run exits 0 and records both outcomes', { skip }, () => {
   const { repo, dir, status } = fixture();
-  writeFileSync(join(dir, 'review/report.md'), `# review-it report\n\ntask: T-01\nverdict: PASS\n\ntask: T-02\nverdict: FAIL\nnote: case T-E1-02 failed: empty export\n`);
+  writeFileSync(join(dir, 'review/report.md'), `# review-it report\nverdict: PASS\n\ntask: T-01\nverdict: PASS\n\ntask: T-02\nverdict: FAIL\nnote: case T-E1-02 failed: empty export\n`);
   const r = sync(repo, 'docs/implementations/demo/review/report.md');
   assert.equal(r.status, 0, r.stdout + r.stderr);
   const s = read(status);
@@ -63,4 +64,124 @@ test('a report without a task: line is refused, status.json untouched', { skip }
   assert.equal(w.status, 1);
   assert.match(w.stderr, /does not name task T-01/);
   assert.equal(readFileSync(status, 'utf8'), before);
+});
+
+// Adversarial cases (verifier, PR #5). No path may turn a task verified without a real PASS.
+const REPORT = 'docs/implementations/demo/review/report.md';
+const tasksOf = (f) => Object.fromEntries(read(f).waves.flatMap((w) => w.tasks).map((t) => [t.id, t]));
+const fence = '`'.repeat(3);
+
+test('PASS pair inside a fenced block with overall FAIL: nothing verified', { skip }, () => {
+  const { repo, dir, status } = fixture();
+  writeFileSync(join(dir, 'review/report.md'), `# review-it report\nverdict: FAIL\n\n| T-E1-01 | AUTHORED | FAIL | x |\n\n${fence}\ntask: T-01\nverdict: PASS\n${fence}\n\n~~~\ntask: T-02\nverdict: PASS\n~~~\n\ntask: T-02\nverdict: FAIL\nnote: case T-E1-02 failed\n`);
+  const r = sync(repo, REPORT);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const t = tasksOf(status);
+  assert.equal(t['T-01'].status, 'done');
+  assert.equal(t['T-02'].status, 'in-progress');
+  assert.ok(!existsSync(join(dir, 'review/verdict-T-01.md')));
+  assert.ok(!existsSync(join(dir, 'review/verdict-T-02.md')));
+});
+
+test('a fenced block alone carries no task block: refused, status.json untouched', { skip }, () => {
+  const { repo, dir, status } = fixture();
+  writeFileSync(join(dir, 'review/report.md'), `# review-it report\nverdict: PASS\n\n${fence}md\ntask: T-01\nverdict: PASS\n${fence}\n`);
+  const before = readFileSync(status, 'utf8');
+  const r = sync(repo, REPORT);
+  assert.equal(r.status, 1);
+  assert.equal(readFileSync(status, 'utf8'), before);
+});
+
+test('overall FAIL with a real per-task PASS: nothing verified', { skip }, () => {
+  const { repo, dir, status } = fixture();
+  writeFileSync(join(dir, 'review/report.md'), `# review-it report\nverdict: FAIL\n\ntask: T-01\nverdict: PASS\n\ntask: T-02\nverdict: FAIL\nnote: case T-E1-02 failed: empty export\n`);
+  const r = sync(repo, REPORT);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stderr, /overall verdict FAIL/);
+  const t = tasksOf(status);
+  assert.equal(t['T-01'].status, 'done');
+  assert.equal(t['T-02'].status, 'in-progress');
+  assert.equal(read(status).history.filter((h) => h.to === 'verified').length, 0);
+});
+
+test('missing overall verdict: nothing verified', { skip }, () => {
+  const { repo, dir, status } = fixture();
+  writeFileSync(join(dir, 'review/report.md'), `# review-it report\n\ntask: T-01\nverdict: PASS\n\ntask: T-02\nverdict: PASS\n`);
+  const r = sync(repo, REPORT);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stderr, /overall verdict missing/);
+  const t = tasksOf(status);
+  assert.equal(t['T-01'].status, 'done');
+  assert.equal(t['T-02'].status, 'done');
+});
+
+test('overall PASS with one task FAIL: only the PASS task verified, verdict file traceable', { skip }, () => {
+  const { repo, dir, status } = fixture();
+  const body = `# review-it report\ncheckpoint: CP-01\nverdict: PASS\n\ntask: T-01\nverdict: PASS\n\ntask: T-02\nverdict: FAIL\nnote: case T-E1-02 failed: empty export\n`;
+  writeFileSync(join(dir, 'review/report.md'), body);
+  const r = sync(repo, REPORT);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const t = tasksOf(status);
+  assert.equal(t['T-01'].status, 'verified');
+  assert.equal(t['T-02'].status, 'in-progress');
+  assert.match(read(status).history.filter((h) => h.task === 'T-02').at(-1).note, /empty export/);
+  const v = readFileSync(join(dir, 'review/verdict-T-01.md'), 'utf8');
+  assert.match(v, new RegExp(`^report: ${REPORT}$`, 'm'));
+  const sha = createHash('sha256').update(body).digest('hex');
+  assert.match(v, new RegExp(`^report_sha256: ${sha}$`, 'm'));
+  assert.ok(!existsSync(join(dir, 'review/verdict-T-02.md')));
+  assert.equal(node([WRITER, 'validate', '--file', status], repo).status, 0);
+});
+
+for (const [name, body] of [
+  ['duplicate task blocks', `verdict: PASS\n\ntask: T-01\nverdict: PASS\n\ntask: T-01\nverdict: FAIL\nnote: x\n`],
+  ['two verdicts in one block', `verdict: PASS\n\ntask: T-01\nverdict: PASS\nverdict: FAIL\n`],
+  ['two overall verdicts', `verdict: PASS\nverdict: FAIL\n\ntask: T-01\nverdict: PASS\n`],
+  ['unknown verdict value', `verdict: PASS\n\ntask: T-01\nverdict: PASS-ish\n`],
+  ['stray verdict after the blocks', `verdict: PASS\n\ntask: T-01\nverdict: PASS\n\nverdict: FAIL\n`],
+  ['task not on the board', `verdict: PASS\n\ntask: T-01\nverdict: PASS\n\ntask: T-99\nverdict: PASS\n`],
+]) {
+  test(`ambiguous report (${name}): exit 1, status.json byte-identical, no verdict file`, { skip }, () => {
+    const { repo, dir, status } = fixture();
+    writeFileSync(join(dir, 'review/report.md'), `# review-it report\n${body}`);
+    const before = readFileSync(status, 'utf8');
+    const r = sync(repo, REPORT);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /refused/);
+    assert.equal(readFileSync(status, 'utf8'), before);
+    assert.ok(!existsSync(join(dir, 'review/verdict-T-01.md')));
+  });
+}
+
+// Invocation paths: main() must actually run (it used to exit 0 silently). A no-task report
+// proves it: a running main exits 1 with the refusal.
+const PASS_REPORT = `# review-it report\nverdict: PASS\n\ntask: T-01\nverdict: PASS\n`;
+function invokedVia(script) {
+  const { repo, dir, status } = fixture();
+  writeFileSync(join(dir, 'review/report.md'), PASS_REPORT);
+  writeFileSync(join(dir, 'review/none.md'), `# review-it report\nverdict: PASS\n`);
+  const none = sync(repo, 'docs/implementations/demo/review/none.md', script);
+  assert.equal(none.status, 1, `main did not run via ${script}: ` + none.stdout + none.stderr);
+  const r = sync(repo, REPORT, script);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.equal(tasksOf(status)['T-01'].status, 'verified');
+}
+
+test('runs through a symlink', { skip }, () => {
+  const d = mkdtempSync(join(tmpdir(), 'rev-sync-link-'));
+  symlinkSync(SYNC, join(d, 'status-sync.mjs'));
+  invokedVia(join(d, 'status-sync.mjs'));
+});
+
+test('runs from a path containing a space', { skip }, () => {
+  const d = join(mkdtempSync(join(tmpdir(), 'rev-sync-')), 'with space');
+  mkdirSync(d);
+  copyFileSync(SYNC, join(d, 'status-sync.mjs'));
+  invokedVia(join(d, 'status-sync.mjs'));
+});
+
+test('runs via /tmp when /tmp is a symlink', { skip: skip || (realpathSync('/tmp') === '/tmp' && '/tmp is not a symlink here') }, () => {
+  const d = mkdtempSync('/tmp/rev-sync-tmp-');
+  copyFileSync(SYNC, join(d, 'status-sync.mjs'));
+  invokedVia(join(d, 'status-sync.mjs'));
 });
