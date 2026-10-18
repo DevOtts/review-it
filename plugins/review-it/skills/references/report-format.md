@@ -61,6 +61,23 @@ verdict: PASS|FAIL
 - build-it reads these two lines to decide whether it may cross a boundary (`checkpoints.mjs check`). A report without them is treated as no verdict.
 - Runs that are not checkpoints omit both lines. Their output does not change.
 
+## 2c. Task results block (amendment 2026-10-18)
+
+Additive. No existing field changes. A run that targets an implementation with a `status.json` ends the report with one block per task:
+
+```
+task: T-01
+verdict: PASS|FAIL
+note: <why, required on FAIL>
+```
+
+- The `task:` line is mandatory: the shared status writer refuses a verdict that does not name the task, and `status-sync.mjs` refuses a report with no `task:` block. A task is `PASS` only if every case behind it is VERIFIED after the honesty adapters (section 4).
+- The report also carries one overall `verdict: PASS|FAIL` line in its header (the same line as 2b, written for every status-sync run, checkpoint or not), before the first `task:` block. A task is synced as verified only when the overall verdict is PASS **and** its own block says PASS. As in 2b, an overall PASS asserts that every task in scope passed: a report with overall PASS and any task block that is not PASS is incoherent and refused (exit 1, nothing written, the contradicting task named). Overall FAIL or missing: nothing is verified, FAIL tasks go to in-progress, PASS tasks stay as they are.
+- Only report prose counts: lines inside ``` / ~~~ fences, 4-space indented code and HTML comments are ignored. A block is the `task:` line plus the non-blank lines right after it. Verdict values are exactly `PASS` or `FAIL`.
+- Ambiguity is refused (exit 1, nothing written): a task with two blocks, a block with two `verdict:` lines, two overall verdicts, any other verdict value, a `verdict:` line outside every block after the first task, or a task not on the board.
+- For each PASS block `status-sync.mjs` cuts a one-task evidence file (`verdict-<TASK>.md`, beside the report) because the writer rejects a file that mixes PASS with a non-PASS verdict. The file records `report:` (path) and `report_sha256:` so the claim can be traced to the exact report.
+- Runs without a `status.json` omit the block.
+
 ## 3. Statuses
 
 Closed vocabulary (CB-1) — defined in `references/vocabularies.md`; the report may contain no state outside it. Every row carries its oracle-provenance tag (R11).
