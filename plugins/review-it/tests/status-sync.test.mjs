@@ -202,3 +202,27 @@ test('runs via /tmp when /tmp is a symlink', { skip: skip || (realpathSync('/tmp
   copyFileSync(SYNC, join(d, 'status-sync.mjs'));
   invokedVia(join(d, 'status-sync.mjs'));
 });
+
+// The value must be exactly PASS or FAIL. A lenient reader would sync a task as verified from a report that
+// build-it's checkpoint reader rejects (lowercase, markdown emphasis, trailing punctuation).
+for (const [label, value] of [['lowercase', 'pass'], ['bold', '**PASS**'], ['code', '`PASS`'], ['trailing dot', 'PASS.'], ['mixed case', 'Pass']]) {
+  test(`overall verdict written ${label} (${value}) is refused, nothing verified`, { skip }, () => {
+    const { repo, dir, status } = fixture();
+    writeFileSync(join(dir, 'review/report.md'), `# review-it report\nverdict: ${value}\n\ntask: T-01\nverdict: PASS\n`);
+    const before = readFileSync(status, 'utf8');
+    const r = sync(repo, 'docs/implementations/demo/review/report.md');
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /is not PASS or FAIL/);
+    assert.equal(readFileSync(status, 'utf8'), before);
+  });
+}
+
+test('a task verdict written in lowercase is refused too', { skip }, () => {
+  const { repo, dir, status } = fixture();
+  writeFileSync(join(dir, 'review/report.md'), `# review-it report\nverdict: PASS\n\ntask: T-01\nverdict: pass\n`);
+  const before = readFileSync(status, 'utf8');
+  const r = sync(repo, 'docs/implementations/demo/review/report.md');
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stderr, /is not PASS or FAIL/);
+  assert.equal(readFileSync(status, 'utf8'), before);
+});
