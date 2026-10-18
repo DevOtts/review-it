@@ -34,10 +34,15 @@ function fixture() {
 const read = (f) => JSON.parse(readFileSync(f, 'utf8'));
 const sync = (repo, report, script = SYNC) => node([script, '--report', report, '--impl', 'demo', '--repo', repo, '--writer', WRITER], repo);
 
+// Overall PASS with a FAIL task is incoherent (2b), so the two outcomes come from two reports:
+// a FAIL run that sends T-02 back, then a run scoped to T-01 that passes.
 test('mixed run exits 0 and records both outcomes', { skip }, () => {
   const { repo, dir, status } = fixture();
-  writeFileSync(join(dir, 'review/report.md'), `# review-it report\nverdict: PASS\n\ntask: T-01\nverdict: PASS\n\ntask: T-02\nverdict: FAIL\nnote: case T-E1-02 failed: empty export\n`);
-  const r = sync(repo, 'docs/implementations/demo/review/report.md');
+  writeFileSync(join(dir, 'review/fail.md'), `# review-it report\nverdict: FAIL\n\ntask: T-02\nverdict: FAIL\nnote: case T-E1-02 failed: empty export\n`);
+  let r = sync(repo, 'docs/implementations/demo/review/fail.md');
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  writeFileSync(join(dir, 'review/report.md'), `# review-it report\nverdict: PASS\n\ntask: T-01\nverdict: PASS\n`);
+  r = sync(repo, 'docs/implementations/demo/review/report.md');
   assert.equal(r.status, 0, r.stdout + r.stderr);
   const s = read(status);
   const tasks = Object.fromEntries(s.waves.flatMap((w) => w.tasks).map((t) => [t.id, t]));
@@ -115,21 +120,33 @@ test('missing overall verdict: nothing verified', { skip }, () => {
   assert.equal(t['T-02'].status, 'done');
 });
 
-test('overall PASS with one task FAIL: only the PASS task verified, verdict file traceable', { skip }, () => {
+test('overall PASS with one task FAIL is incoherent: refused, nothing written', { skip }, () => {
   const { repo, dir, status } = fixture();
-  const body = `# review-it report\ncheckpoint: CP-01\nverdict: PASS\n\ntask: T-01\nverdict: PASS\n\ntask: T-02\nverdict: FAIL\nnote: case T-E1-02 failed: empty export\n`;
+  writeFileSync(join(dir, 'review/report.md'), `# review-it report\ncheckpoint: CP-01\nverdict: PASS\n\ntask: T-01\nverdict: PASS\n\ntask: T-02\nverdict: FAIL\nnote: case T-E1-02 failed: empty export\n`);
+  const before = readFileSync(status, 'utf8');
+  const r = sync(repo, REPORT);
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stderr, /incoherent: overall verdict PASS but task T-02 is FAIL/);
+  assert.equal(readFileSync(status, 'utf8'), before);
+  assert.ok(!existsSync(join(dir, 'review/verdict-T-01.md')));
+  assert.ok(!existsSync(join(dir, 'review/verdict-T-02.md')));
+});
+
+test('overall PASS with every task PASS: all verified, verdict files traceable', { skip }, () => {
+  const { repo, dir, status } = fixture();
+  const body = `# review-it report\ncheckpoint: CP-01\nverdict: PASS\n\ntask: T-01\nverdict: PASS\n\ntask: T-02\nverdict: PASS\n`;
   writeFileSync(join(dir, 'review/report.md'), body);
   const r = sync(repo, REPORT);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   const t = tasksOf(status);
   assert.equal(t['T-01'].status, 'verified');
-  assert.equal(t['T-02'].status, 'in-progress');
-  assert.match(read(status).history.filter((h) => h.task === 'T-02').at(-1).note, /empty export/);
-  const v = readFileSync(join(dir, 'review/verdict-T-01.md'), 'utf8');
-  assert.match(v, new RegExp(`^report: ${REPORT}$`, 'm'));
+  assert.equal(t['T-02'].status, 'verified');
   const sha = createHash('sha256').update(body).digest('hex');
-  assert.match(v, new RegExp(`^report_sha256: ${sha}$`, 'm'));
-  assert.ok(!existsSync(join(dir, 'review/verdict-T-02.md')));
+  for (const id of ['T-01', 'T-02']) {
+    const v = readFileSync(join(dir, `review/verdict-${id}.md`), 'utf8');
+    assert.match(v, new RegExp(`^report: ${REPORT}$`, 'm'));
+    assert.match(v, new RegExp(`^report_sha256: ${sha}$`, 'm'));
+  }
   assert.equal(node([WRITER, 'validate', '--file', status], repo).status, 0);
 });
 

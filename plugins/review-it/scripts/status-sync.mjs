@@ -14,11 +14,12 @@
 // Only lines outside fenced code blocks (``` and ~~~), indented code and HTML comments count.
 // A task is synced as verified only when the overall verdict is PASS and its own block says PASS:
 // a one-task verdict file (with the report path and sha256) is cut beside the report and the writer
-// is called with --status verified --by review-it. A task whose block says FAIL (or has no verdict)
-// goes to in-progress with a note. With an overall FAIL or no overall verdict nothing is verified;
-// PASS tasks are left as they are. Any ambiguity (duplicate task block, two verdicts in one block,
-// two overall verdicts, an unknown verdict value, a stray verdict line, a task not on the board)
-// is refused with exit 1 before anything is written.
+// is called with --status verified --by review-it. An overall PASS with any task not PASS is
+// incoherent (2b) and refused. With an overall FAIL or no overall verdict nothing is verified: a task
+// whose block says FAIL (or has no verdict) goes to in-progress with a note, PASS tasks are left as
+// they are. Any ambiguity (duplicate task block, two verdicts in one block, two overall verdicts, an
+// unknown verdict value, a stray verdict line, a task not on the board) or incoherence is refused
+// with exit 1 before anything is written.
 import { readFileSync, writeFileSync, mkdirSync, existsSync, realpathSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -129,6 +130,9 @@ function main() {
   if (!known) refuse(`no status.json for implementation ${impl}`);
   const missing = blocks.filter((b) => !known.has(b.task)).map((b) => b.task);
   if (missing.length) refuse(`task(s) not on the board: ${missing.join(', ')}`);
+  // 2b: an overall PASS asserts every task in scope passed, so any other task verdict is incoherent.
+  const contra = overall === 'PASS' ? blocks.filter((b) => b.verdict !== 'PASS') : [];
+  if (contra.length) refuse(`${report} is incoherent: overall verdict PASS but ${contra.map((b) => `task ${b.task} is ${b.verdict || 'without a verdict'}`).join(', ')}`);
 
   const sha = createHash('sha256').update(raw).digest('hex');
   const reportRel = relative(repo, reportAbs);
