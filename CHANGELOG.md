@@ -2,6 +2,25 @@
 
 All notable changes to the `review-it` plugin.
 
+## [2.0.0] — 2026-10-14
+
+Major release: review-it moves to 2.0.0 together with the rest of the *-it lifecycle family (prompt-it 1.0.0, plan-it 5.0.0, build-it 4.0.0, conclude-it 2.0.0, parallel-lifecycle 1.0.0). No behaviour change beyond 1.1.0.
+
+### Changed
+- Version bump in `plugin.json`, `marketplace.json` and both `review-it` `SKILL.md` frontmatters.
+- prompt-it pin 0.3.0 → 1.0.0 (exact) in `.claude-plugin/marketplace.json`.
+
+## [1.1.0] — 2026-10-14
+
+do-it integration (companion-change catalog, review-it section). Additive; standalone behaviour unchanged.
+
+### Added
+- `skills/references/do-it-integration.md`: owns and re-cuts `.do-it/review/ATTENDED-GATE.html` each round, `roteiro.json` with a frozen fingerprint to detect a repeated round, `findings.json`; severity classes blocker / major / minor / nit; `it-result/1` writer rules; `DO_IT_HOME` root resolution; PASS→VERIFIED, FAIL→BLOCKED mapping; T1/T2/T3 tier vocabulary.
+- Step 6 of the front door points at it when run under do-it.
+
+### Changed
+- prompt-it pin 0.2.1 → 0.3.0 in `.claude-plugin/marketplace.json` (G-15 drift fix).
+
 ## [1.0.0] — 2026-07-14
 
 First public release — the QA front door of the DevOtts lifecycle family
