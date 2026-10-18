@@ -47,6 +47,20 @@ Did any row get a false VERIFIED this run, and which verification primitive woul
 
 Deploy-verify runs add a `READY / NOT-READY` release verdict with per-item PASS/INV rows (see `skills/deploy-verify/SKILL.md`). PR-review runs replace verdict rows with severity-tiered findings (see `skills/pr-review/SKILL.md`) but keep the ledger, preflight and debrief sections unchanged.
 
+## 2b. Checkpoint header (amendment 2026-10-18)
+
+Additive. Nothing above changes. When a run is a review-it checkpoint (build-it's `due` or plan-it's `review_checkpoints` named it), the report header carries two extra lines, exactly once each, before the verdict rows:
+
+```
+checkpoint: CP-NN
+verdict: PASS|FAIL
+```
+
+- `checkpoint:` is the id the caller passed (for example `CP-01`), copied verbatim.
+- `verdict:` is `PASS` only when every row in scope is VERIFIED after the honesty adapters (§4). Any row that is not VERIFIED makes it `FAIL`. Never write `PASS` on a partial run.
+- build-it reads these two lines to decide whether it may cross a boundary (`checkpoints.mjs check`). A report without them is treated as no verdict.
+- Runs that are not checkpoints omit both lines. Their output does not change.
+
 ## 3. Statuses
 
 Closed vocabulary (CB-1) — defined in `references/vocabularies.md`; the report may contain no state outside it. Every row carries its oracle-provenance tag (R11).
