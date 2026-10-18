@@ -61,6 +61,20 @@ verdict: PASS|FAIL
 - build-it reads these two lines to decide whether it may cross a boundary (`checkpoints.mjs check`). A report without them is treated as no verdict.
 - Runs that are not checkpoints omit both lines. Their output does not change.
 
+## 2c. Task results block (amendment 2026-10-18)
+
+Additive. No existing field changes. A run that targets an implementation with a `status.json` ends the report with one block per task:
+
+```
+task: T-01
+verdict: PASS|FAIL
+note: <why, required on FAIL>
+```
+
+- The `task:` line is mandatory: the shared status writer refuses a verdict that does not name the task, and `status-sync.mjs` refuses a report with no `task:` block. A task is `PASS` only if every case behind it is VERIFIED after the honesty adapters (section 4).
+- For each PASS block `status-sync.mjs` cuts a one-task evidence file (`verdict-<TASK>.md`, beside the report) because the writer rejects a file that mixes PASS with a non-PASS verdict.
+- Runs without a `status.json` omit the block.
+
 ## 3. Statuses
 
 Closed vocabulary (CB-1) — defined in `references/vocabularies.md`; the report may contain no state outside it. Every row carries its oracle-provenance tag (R11).

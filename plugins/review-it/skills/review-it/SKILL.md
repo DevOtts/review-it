@@ -107,6 +107,14 @@ Emit exactly one report in the `references/report-format.md` schema, to the cons
 
 **Under do-it** (a `run_id` is supplied; see `references/do-it-integration.md`): also re-cut `.do-it/review/ATTENDED-GATE.html` whole every round, write `.do-it/review/roteiro.json` (frozen, fingerprinted to detect a repeated round) and `.do-it/review/findings.json` (severity: blocker, major, minor, nit), then write `it-result/1` atomically as the last act of the stage (PASS→VERIFIED, FAIL→BLOCKED; never write `state.json`). Resolve the root from `DO_IT_HOME`, else `{main checkout}/.do-it`.
 
+**Status sync (when the target has a `status.json`).** If the run targets an implementation with `docs/implementations/<name>/status.json` (or `docs/implementation/<name>/`), then after the report is written, finish with a "Task results" block per task in the report (`task: <ID>`, `verdict: PASS|FAIL`, `note:` on FAIL; see `references/report-format.md` 2c) and run:
+
+```
+node plugins/review-it/scripts/status-sync.mjs --report <report path> --impl <name>
+```
+
+It calls the shared writer (`build-it/.../status/status-write.mjs`, never edits `status.json` by hand): a task VERIFIED after the honesty adapters gets `set <TASK> --status verified --evidence <verdict file> --by review-it --impl <name>`; any task not verified gets `set <TASK> --status in-progress --note "<reason>" --by review-it --impl <name>`. A refusal from the writer is reported, never worked around. Checkpoint runs also write the `checkpoint:` / `verdict:` header lines (report-format 2b).
+
 Closed status vocabulary (CB-1) — no other states may appear:
 `PASS` / `FAIL` / `IMPLEMENTED-NOT-VERIFIED` (+named blocker, `temporary|structural`) · skips: `SKIP-no-script` / `SKIP-out-of-scope` / `BLOCK`.
 Every row carries its oracle-provenance tag (`AUTHORED` | `DERIVED`). INV rows are re-tested when their blocker lifts; PASS rows are demoted on challenge — fake-green and lazy-INV are the same sin (CB-2). Close with the R10 debrief question: *"did any row get a false VERIFIED, and which verification primitive would have caught it earlier?"*
