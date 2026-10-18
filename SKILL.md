@@ -46,6 +46,7 @@ Before any verdict, assert WHICH app / checkout / branch you are about to test, 
 2. In a worktree, honor `parallel-lifecycle`'s `.env.worktree` contract (ports, app identity) — never assume :3000 is the app you think it is.
 3. For coverage/deadness claims, resolve against `origin/<branch>:<path>` — a stale local checkout contaminated by parallel sessions is never the verification surface.
 4. If the running service's identity can't be proven (no marker route, wrong port owner), stop and fix identity first — a verdict on the wrong app is worse than no verdict.
+5. Register the session when the target names an implementation folder (`docs/implementations/<name>/`): `node "$I" <name> --role review --repo <repo root>`, where `I` is init-it's `scripts/init-it.mjs` (env `INIT_IT_SCRIPT`, else the newest installed `plugins/cache/*/init-it/<ver>/scripts/init-it.mjs`). Idempotent; init-it absent or a non-zero exit → note it in the preflight line and continue (registration never blocks a review).
 
 ## Step 1 — Detect the mode from the target (FR1.1)
 
