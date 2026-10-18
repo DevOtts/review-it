@@ -132,7 +132,7 @@ Every row carries its oracle-provenance tag (`AUTHORED` | `DERIVED`). INV rows a
 ```bash
 # As a Claude Code plugin (recommended)
 /plugin marketplace add DevOtts/review-it
-/plugin install review-it@devotts
+/plugin install review-it@review-it
 
 # Or as a standalone skill package
 npx skills add DevOtts/review-it
