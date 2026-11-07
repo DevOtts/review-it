@@ -166,6 +166,8 @@ export function parseLedger(text) {
 export function evidenceOk(ev) {
   const s = String(ev || '');
   if (/[A-Za-z0-9._/-]+@[0-9a-f]{7,40}\b/.test(s)) return true;
+  // `<sha>:<path>[:line]` (git show form) is the same primary citation without the repo prefix.
+  if (/(^|[\s`(])[0-9a-f]{7,40}:[A-Za-z0-9._/-]+/.test(s)) return true;
   for (const m of s.matchAll(/`([^`]+)`/g)) if (CMD_WORDS.test(m[1].trim())) return true;
   return false;
 }

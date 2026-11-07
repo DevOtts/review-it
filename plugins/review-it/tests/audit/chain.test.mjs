@@ -247,3 +247,13 @@ test('T-Q1-05 (c) routine against the real plan-it gate-check claims', { skip: R
   assert.match(r.stdout, /routine: gate-check claims exit 0/);
   assert.ok(!exists(ws, 'audit'));
 });
+
+test('T-Q1-01-cite evidenceOk accepts repo@sha, <sha>:<path>:line and a backticked command; refuses a bare path', async () => {
+  const { evidenceOk } = await import('../../scripts/audit-chain.mjs');
+  assert.equal(evidenceOk('review-it@eed4dec:LICENSE:1'), true);
+  assert.equal(evidenceOk('`d38cedb:hosts/claude-code/hooks/stop-gate.mjs:20` callSpine(...)'), true);
+  assert.equal(evidenceOk('see d38cedb:core/spine/src/stopgate.mjs:11-20'), true);
+  assert.equal(evidenceOk('`git show eed4dec:LICENSE`'), true);
+  assert.equal(evidenceOk('`runs/*/state.json` says so'), false);
+  assert.equal(evidenceOk('the deadbeef commit'), false);
+});
