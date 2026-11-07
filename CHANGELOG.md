@@ -2,6 +2,20 @@
 
 All notable changes to the `review-it` plugin.
 
+## [Unreleased]
+
+### Added
+- Audit mode, `/review-it --audit <claims.md> [--stakes decision|routine]` (do-it 1.1 Q1, D6, G-6).
+  `scripts/audit-chain.mjs` referees the chain from auditor to ombudsman, following CONTRACT §3.2: one
+  re-dispatch of the missing rows, then escalation to the owner; PARTIAL_TRUST re-check of a class
+  after an overturned TRUE; owner abort with rollback. State lives in `audit/chain-state.json`. It
+  publishes `audit/audit-<model>.md`, `audit/ombudsman.md` and `audit/SAFE.md` only when the chain
+  completes. An auditor of the author's model is refused before dispatch. `--stakes routine` runs only
+  plan-it's `gate-check claims`.
+- Every ledger row's tier is resolved by `doc-it tiers resolve`, and an unknown tier is refused (K2-02).
+  Without doc-it the audit prints `[skip] doc-it not installed: tier enum` and never reports that check
+  as PASS (K2-03, D14).
+
 ## [2.1.1] — 2026-10-18
 
 Patch release, from the first real run of the do-it harness.

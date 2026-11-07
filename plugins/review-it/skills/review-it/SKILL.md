@@ -29,7 +29,8 @@ Two failures define your reason to exist (the Airtable postmortem): a "VERIFIED"
    ├─ MODE contract-qa    → PRIMARY: run the plan-phase Test Contract against the build
    ├─ MODE side-effects   → third-party write verification  (skills/side-effects/SKILL.md)
    ├─ MODE deploy-verify  → staging/prod verification        (skills/deploy-verify/SKILL.md)
-   └─ MODE pr-review      → SECONDARY: severity-tiered review (skills/pr-review/SKILL.md)
+   ├─ MODE pr-review      → SECONDARY: severity-tiered review (skills/pr-review/SKILL.md)
+   └─ MODE audit          → --audit <claims.md>: auditor → ombudsman chain on a claim ledger (Audit mode)
    ▼
   GATES  — references/gate-catalog.md (R1–R11), applied in EVERY mode
    ▼
@@ -56,6 +57,7 @@ Before any verdict, assert WHICH app / checkout / branch you are about to test, 
 | A PR ref / branch / diff | **pr-review** |
 | `staging` / `prod` / a deploy or release ask | **deploy-verify** |
 | A DoD or feature dir whose criteria include third-party writes (Airtable, Slack, Shopify, CRM…) | **side-effects** |
+| `--audit <claims.md>` (a claim ledger) | **audit** — see "Audit mode" below; it replaces Steps 2–6 |
 | Mixed | run the modes in sequence: contract-qa → side-effects → deploy-verify; pr-review only when a PR is the object |
 
 State the detected mode in one line and proceed — no menu, no confirmation.
@@ -119,6 +121,38 @@ It calls the shared writer (`build-it/.../status/status-write.mjs`, never edits 
 Closed status vocabulary (CB-1) — no other states may appear:
 `PASS` / `FAIL` / `IMPLEMENTED-NOT-VERIFIED` (+named blocker, `temporary|structural`) · skips: `SKIP-no-script` / `SKIP-out-of-scope` / `BLOCK`.
 Every row carries its oracle-provenance tag (`AUTHORED` | `DERIVED`). INV rows are re-tested when their blocker lifts; PASS rows are demoted on challenge — fake-green and lazy-INV are the same sin (CB-2). Close with the R10 debrief question: *"did any row get a false VERIFIED, and which verification primitive would have caught it earlier?"*
+
+## Audit mode — `/review-it --audit <claims.md> [--stakes decision|routine]`
+
+Checks a claim ledger (plan-it's format: a table `| ID | Claim | Tier | Source |`) before anyone acts on it. The script `plugins/review-it/scripts/audit-chain.mjs` is the referee: it never calls a model, it tells you what to dispatch (one `DISPATCH {json}` line on stdout), checks what comes back, walks the chain's states and publishes. **You** dispatch the subagents. Never edit `audit/chain-state.json` or the published files by hand. `C` below is `node <plugin root>/scripts/audit-chain.mjs`. The plugin root is `plugins/review-it/` in this repo, or `~/.claude/plugins/cache/<marketplace>/review-it/<version>/` when installed.
+
+**Stakes (D6).** `decision` (default) = anything that backs an owner decision or a plan freeze: full chain. `routine` = everything else: `C start <claims.md> --stakes routine` runs only plan-it's `gate-check claims <claims.md>` and dispatches nothing. Do not dispatch any subagent on a routine run. plan-it's gate-check is found at env `PLAN_IT_GATE_CHECK`, else the newest `~/.claude/plugins/cache/*/plan-it/<ver>/scripts/gate-check.mjs`; if it is missing the script prints `[skip] plan-it not installed: gate-check claims` and the ledger counts as unchecked, never as PASS.
+
+**1. Start.** `C start <claims.md> --auditor-model <model> [--author-model <model>] [--ombudsman-model opus]`
+- The author model comes from the ledger header line `Author model: <model>` or `--author-model`. If both are given and differ, or neither is given, the start is refused.
+- G-6: if the auditor is the author's model, the start is refused before any dispatch. Models are compared by family (`opus`, `claude-opus-5-5` and `claude-opus-4-8` are the same model here). Pick an auditor from another family.
+- K2-02: each row's Tier cell is resolved by doc-it (`doc-it tiers resolve`, found through env `DOC_IT_CLI`, else the newest `~/.claude/plugins/cache/*/doc-it/<ver>/scripts/doc-it.mjs`). An unknown tier refuses the ledger. Without doc-it the script prints `[skip] doc-it not installed: tier enum` and goes on; the tier check then stays unchecked, never PASS.
+
+**2. Auditor.** Dispatch one subagent on the `model` the DISPATCH line names, for exactly the `rows` it lists, writing to its `write_to` path. Tell it: read-only; primary sources only (`git show <sha>:<path>`, `git grep`, files on disk, command output); it never takes another document's word, including the ledger's `Source` column. Every row gets one verdict, `TRUE | FALSE | PARTIAL | UNVERIFIABLE`, and evidence that cites `repo@sha[:path:line]` or a command in backticks. File shape:
+
+```
+model: <its model id>
+tokens: <its token count, if known>
+
+| ID | Verdict | Evidence |
+|---|---|---|
+| C1 | TRUE | do-it@d38cedb:core/spine/src/state.mjs:117 |
+```
+
+Then `C record-audit <file> --ledger <claims.md> --tokens <usage the host reports>`. Use the token count from the subagent's usage line, not the subagent's own guess. If rows are missing or a row has no citable evidence, the state goes to AUDIT_RETRY_FAILED and a new DISPATCH names only those rows. Dispatch once more for them. A second miss goes to ESCALATED_TO_OWNER (exit 3): stop, publish nothing, and tell the owner which rows are missing.
+
+**3. Ombudsman (D6: Opus).** When all rows are covered, the state goes to AUDITED and then ADJUDICATING, with a DISPATCH for the ombudsman. Its `inputs` lists the merged verdicts. Dispatch an Opus subagent. It re-reads primary sources, and it checks TRUE verdicts as hard as the others. It rules on every listed row with `UPHELD` or a final value `TRUE | FALSE | PARTIAL | UNVERIFIABLE`, plus a reason (`| ID | Ruling | Reason |`, optional `Class`; header `model:` / `tokens:`). Then run `C record-ombudsman <file> --ledger <claims.md> --tokens <n>`.
+- If a TRUE verdict is overturned, the state goes to PARTIAL_TRUST. The new DISPATCH sends the auditor back over the other TRUE rows of that class (the row's doc-it tier, or the ombudsman's `Class` cell). Record it with `record-audit`. The ombudsman then rules on the re-checked rows (ADJUDICATING again). Each class is re-sampled once.
+- Otherwise the state goes ADJUDICATED → PUBLISHABLE, and the script writes `audit/audit-<model>.md`, `audit/ombudsman.md` and `audit/SAFE.md` next to the ledger. SAFE.md lists SAFE rows (final TRUE) and DO-NOT-PUBLISH rows (everything else, with the reason), plus tokens per role. Only SAFE rows may be repeated as fact.
+
+**Abort.** When the owner stops the chain, run `C abort --ledger <claims.md> [--reason ...]`. The state goes ABORTED, then back to LEDGER_READY (rollback). Nothing is republished. The work files are removed. A SAFE.md published by an earlier chain stays exactly as it was, and no new SAFE.md is written.
+
+**Resume.** `C status --ledger <claims.md>` prints the state and the `PENDING` dispatch, if there is one. A new session continues from there. State names follow CONTRACT §3.2's diagram: AUDIT_RETRY_FAILED is the table's AUDIT_RETRY, and PARTIAL_TRUST is its REAUDIT_SAMPLE. Exit codes: 0 ok, 1 refused (nothing changed), 2 usage, 3 escalated.
 
 ## Credential boundaries (§4.1)
 
