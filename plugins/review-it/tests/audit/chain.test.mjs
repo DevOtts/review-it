@@ -257,3 +257,12 @@ test('T-Q1-01-cite evidenceOk accepts repo@sha, <sha>:<path>:line and a backtick
   assert.equal(evidenceOk('`runs/*/state.json` says so'), false);
   assert.equal(evidenceOk('the deadbeef commit'), false);
 });
+
+test('T-Q1-01-cite-b evidenceOk accepts shell constructs and env-prefixed commands, still refuses prose', async () => {
+  const { evidenceOk } = await import('../../scripts/audit-chain.mjs');
+  assert.equal(evidenceOk('`for d in runs/*/; do python3 -c "print(1)"; done` -> 4 runs'), true);
+  assert.equal(evidenceOk('`DOC_IT_CLI=x node scripts/doc-it.mjs tiers --json`'), true);
+  assert.equal(evidenceOk('`cd repo && git log -1`'), true);
+  assert.equal(evidenceOk('`PARKED null` and `owner` fields'), false);
+  assert.equal(evidenceOk('`forgotten words`'), false);
+});

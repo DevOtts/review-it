@@ -30,7 +30,8 @@ export const VERDICTS = ['TRUE', 'FALSE', 'PARTIAL', 'UNVERIFIABLE'];
 export const STATE_ALIASES = { AUDIT_RETRY: 'AUDIT_RETRY_FAILED', REAUDIT_SAMPLE: 'PARTIAL_TRUST' };
 const IN_FLIGHT = new Set(['AUDITING', 'AUDIT_RETRY_FAILED', 'AUDITED', 'ADJUDICATING', 'PARTIAL_TRUST', 'ADJUDICATED']);
 const FAMILIES = ['opus', 'sonnet', 'haiku', 'fable', 'gpt', 'gemini', 'llama', 'mistral', 'grok', 'deepseek', 'qwen', 'codex'];
-const CMD_WORDS = /^(git|node|npm|npx|gh|grep|rg|ls|cat|find|curl|jq|sed|awk|head|tail|wc|diff|stat|bash|sh|python3?|test|doc-it|gate-check)\b/;
+// A command may start with env assignments (`A=b cmd`) or a shell construct (`for … do … done`, `cd x && …`).
+const CMD_WORDS = /^(?:[A-Z_][A-Z0-9_]*=\S*\s+)*(git|node|npm|npx|gh|grep|rg|ls|cat|find|curl|jq|sed|awk|head|tail|wc|diff|stat|bash|sh|zsh|python3?|test|doc-it|gate-check|for|while|if|cd|env|xargs|sort|uniq|tr|cut|printf|echo|shasum|sha256sum|md5|du|file|readlink|realpath|date|cmp)\b/;
 
 // ---------- small utilities ----------
 class Refusal extends Error { constructor(msg, code = 1) { super(msg); this.code = code; } }
