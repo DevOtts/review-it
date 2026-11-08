@@ -204,3 +204,48 @@ test('Q1-M2 (c) dropping a row from the state, or editing a recorded file, is re
   assert.match(t.stderr, /STATE_TAMPERED: recorded file .chain\/auditor-1.md changed after it was recorded/);
   assert.ok(!exists(ws2, 'audit/SAFE.md'));
 });
+
+test('Q1-M3 a ledger edited after start is refused with LEDGER_CHANGED; no SAFE.md for the old text', () => {
+  const ws = workspace('chain');
+  const ledger = twoRowAttack(ws);
+  // The reviewer's edit: C2 rewritten, C3 appended, after start.
+  writeFileSync(ledger, read(ws, 'opus-claims.md').replace('thing two', 'the moon is cheese') + '| C3 | added later | code | review-it@eed4dec:LICENSE:1 |\n');
+  writeFileSync(join(ws.dir, 'v.md'), verdicts([['C1', 'TRUE', 'review-it@eed4dec:LICENSE:1'], ['C2', 'TRUE', '`git show eed4dec:LICENSE`']]));
+  const a = run(['record-audit', join(ws.dir, 'v.md'), '--ledger', ledger], { home: ws.home });
+  assert.equal(a.status, 1);
+  assert.match(a.stderr, /LEDGER_CHANGED: .* changed since start/);
+  assert.match(a.stderr, /start <claims.md> --restart/);
+  assert.equal(state(ws).state, 'AUDITING', 'nothing recorded');
+  const s = run(['status', '--ledger', ledger], { home: ws.home });
+  assert.equal(s.status, 1);
+  assert.match(s.stderr, /LEDGER_CHANGED/);
+  // Changed between the audit and the rulings: refused at record-ombudsman too.
+  const ws2 = workspace('chain');
+  const l2 = twoRowAttack(ws2);
+  assert.equal(run(['record-audit', join(ws.dir, 'v.md'), '--ledger', l2], { home: ws2.home }).status, 0);
+  writeFileSync(l2, read(ws2, 'opus-claims.md').replace('thing two', 'the moon is cheese'));
+  writeFileSync(join(ws2.dir, 'o.md'), rulings([['C1', 'UPHELD'], ['C2', 'UPHELD']]));
+  const o = run(['record-ombudsman', join(ws2.dir, 'o.md'), '--ledger', l2], { home: ws2.home });
+  assert.equal(o.status, 1);
+  assert.match(o.stderr, /LEDGER_CHANGED/);
+  assert.ok(!exists(ws2, 'audit/SAFE.md'));
+  // --restart audits the current ledger: three rows now.
+  const r = run(['start', l2, '--auditor-model', 'sonnet', '--restart', ...REPOS], { home: ws2.home });
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(r.dispatches[0].rows, ['C1', 'C2']);
+  assert.equal(state(ws2).rows[1].claim, 'the moon is cheese');
+});
+
+test('Q1-M3 (b) status flags a published SAFE.md whose ledger has since changed', () => {
+  const ws = workspace('chain');
+  const ledger = twoRowAttack(ws);
+  writeFileSync(join(ws.dir, 'v.md'), verdicts([['C1', 'TRUE', 'review-it@eed4dec:LICENSE:1'], ['C2', 'TRUE', '`git show eed4dec:LICENSE`']]));
+  assert.equal(run(['record-audit', join(ws.dir, 'v.md'), '--ledger', ledger], { home: ws.home }).status, 0);
+  writeFileSync(join(ws.dir, 'o.md'), rulings([['C1', 'UPHELD'], ['C2', 'UPHELD']]));
+  assert.equal(run(['record-ombudsman', join(ws.dir, 'o.md'), '--ledger', ledger], { home: ws.home }).status, 0);
+  assert.equal(run(['status', '--ledger', ledger], { home: ws.home }).status, 0);
+  writeFileSync(ledger, read(ws, 'opus-claims.md') + '| C3 | added later | code | x |\n');
+  const s = run(['status', '--ledger', ledger], { home: ws.home });
+  assert.equal(s.status, 1);
+  assert.match(s.stderr, /LEDGER_CHANGED/);
+});

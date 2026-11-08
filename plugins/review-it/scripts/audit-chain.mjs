@@ -370,6 +370,17 @@ function loadState(opt, { check = true } = {}) {
   }
   return { st, file: f };
 }
+// CP-03 Q1-M3: the ledger a chain audits is the ledger as it was at start. Re-checked by every command;
+// a changed (or deleted) ledger refuses with LEDGER_CHANGED, since a SAFE list for the old text would
+// be read as covering the new one.
+function ledgerChanged(st) {
+  const t = existsSync(st.ledger) ? readFileSync(st.ledger, 'utf8') : null;
+  if (t === null) return `${st.ledger} no longer exists`;
+  const now_ = sha256(t);
+  return now_ === st.ledger_sha256 ? null : `${st.ledger} changed since start (sha256 ${st.ledger_sha256.slice(0, 12)}… at start, ${now_.slice(0, 12)}… now)`;
+}
+const ledgerRefusal = (why) => new Refusal(`LEDGER_CHANGED: ${why}; nothing recorded or published. Re-audit the current ledger with \`start <claims.md> --restart\``);
+function requireLedger(st) { const why = ledgerChanged(st); if (why) throw ledgerRefusal(why); }
 function saveState(file, st) {
   const text = JSON.stringify(st, null, 2) + '\n';
   writeAtomic(file, text);
@@ -386,8 +397,8 @@ function keepRecord(st, role, text, src, requested, model) {
 }
 // Re-derive the chain from the ledger and the record copies; refuse unless the state agrees.
 function verifyChain(st) {
-  const lt = existsSync(st.ledger) ? readFileSync(st.ledger, 'utf8') : null;
-  if (lt === null || sha256(lt) !== st.ledger_sha256) throw new Refusal(`LEDGER_CHANGED: ${st.ledger} changed since start; run \`start <claims.md> --restart\``);
+  requireLedger(st);
+  const lt = readFileSync(st.ledger, 'utf8');
   const rows = parseLedger(lt).rows;
   const same = rows.length === st.rows.length && rows.every((r, i) => ['id', 'claim', 'tier', 'source'].every((k) => r[k] === st.rows[i][k]));
   if (!same) throw tampered('the state\'s rows are not the ledger\'s rows');
@@ -592,6 +603,7 @@ function cmdStart(pos, opt, out, log) {
 
 function cmdRecordAudit(pos, opt, out, log) {
   const { st, file } = loadState(opt);
+  requireLedger(st);
   if (!['AUDITING', 'PARTIAL_TRUST'].includes(st.state)) throw new Refusal(`record-audit is not valid in state ${st.state}`);
   const vf = pos[0] ? resolve(pos[0]) : null;
   const text = vf && existsSync(vf) ? readFileSync(vf, 'utf8') : null;
@@ -678,6 +690,7 @@ function cmdRecordAudit(pos, opt, out, log) {
 
 function cmdRecordOmbudsman(pos, opt, out, log) {
   const { st, file } = loadState(opt);
+  requireLedger(st);
   if (st.state !== 'ADJUDICATING') throw new Refusal(`record-ombudsman is not valid in state ${st.state}`);
   const of = pos[0] ? resolve(pos[0]) : null;
   if (!of || !existsSync(of)) throw new Refusal(`rulings file not found: ${pos[0] || '(none)'}; state stays ADJUDICATING`);
@@ -755,16 +768,18 @@ function cmdAbort(pos, opt, out, log) {
   return 0;
 }
 
-function cmdStatus(pos, opt, out) {
+function cmdStatus(pos, opt, out, log) {
   const { st } = loadState(opt);
-  if (opt.json) { out(JSON.stringify(st, null, 2)); return 0; }
+  const changed = st.state === 'LEDGER_READY' ? null : ledgerChanged(st); // PUBLISHABLE too: the SAFE.md is stale
+  if (opt.json) { out(JSON.stringify(changed ? { ...st, ledger_changed: changed } : st, null, 2)); return changed ? 1 : 0; }
+  if (changed) log(`LEDGER_CHANGED: ${changed}; this chain no longer covers the ledger. Re-audit with \`start <claims.md> --restart\``);
   out(`state ${st.state}${st.aborted && st.state === 'LEDGER_READY' ? ` (rolled back after ABORTED from ${st.aborted.from})` : ''}`);
   out(`ledger ${st.ledger} (${st.rows.length} rows); author ${st.author_model}; auditor ${st.auditor_model}; ombudsman ${st.ombudsman_model}`);
   out(`tier enum: ${st.tier_check === 'doc-it' ? 'checked by doc-it' : '[skip] doc-it not installed: tier enum'}`);
   out(`verdicts ${Object.keys(st.audit.verdicts).length}/${st.rows.length}; rulings ${Object.keys(st.rulings).length}/${st.rows.length}`);
   if (st.pending) out(`PENDING ${JSON.stringify(st.pending)}`);
   if (st.published) out(`published ${st.published.at}: SAFE ${st.published.safe.length}, DO-NOT-PUBLISH ${st.published.do_not_publish.length}`);
-  return st.state === 'ESCALATED_TO_OWNER' ? 3 : 0;
+  return st.state === 'ESCALATED_TO_OWNER' ? 3 : (changed ? 1 : 0);
 }
 
 export function main(argv = process.argv.slice(2), out = (s) => process.stdout.write(s + '\n'), log = (s) => process.stderr.write(s + '\n')) {
