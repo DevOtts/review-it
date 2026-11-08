@@ -104,14 +104,30 @@ export function resolveFamily(m, declared = {}) {
   const fam = head && (FAMILIES.includes(head) ? head : MODEL_FAMILIES.aliases[head]);
   const tailOk = words.slice(i + 1).every((w) => /^\d+$/.test(w) || MODEL_FAMILIES.tiers.includes(w));
   const known = fam && tailOk ? fam : null;
+  // CP-03 R2-Q1-M4: any word that names a family fixes the family, even when the rest of the id is not
+  // understood (`opus-xl`, `claude-opus-research`), so a declaration can never relabel it. A word that
+  // only CONTAINS a family name (`opusxl`) fixes it too. Two different families in one id are refused.
+  // A family word that is also a tier word (`codex` in `gpt-5-codex`) counts only as the head word.
+  const named = new Set();
+  words.forEach((w, k) => {
+    if (MODEL_FAMILIES.prefixes.includes(w) || /^\d+$/.test(w)) return;
+    if (k !== i && MODEL_FAMILIES.tiers.includes(w)) return;
+    if (FAMILIES.includes(w)) { named.add(w); return; }
+    if (MODEL_FAMILIES.aliases[w]) { named.add(MODEL_FAMILIES.aliases[w]); return; }
+    for (const f of FAMILIES) if (w.includes(f) && !(k !== i && f === 'codex')) named.add(f);
+  });
+  if (named.size > 1) return { error: `model id "${id}" names more than one family (${[...named].join(', ')}); refused, G-6 cannot tell which model it is` };
+  const fixed = named.size ? [...named][0] : null;
   const decl = declared[id] ?? declared[id.toLowerCase()];
   if (decl !== undefined) {
     const d = String(decl).trim().toLowerCase();
     if (!FAMILIES.includes(d)) return { error: `--model-family ${id}=${decl}: "${decl}" is not a known family (${FAMILIES.join(', ')})` };
-    if (known && known !== d) return { error: `--model-family ${id}=${decl} contradicts the known family of ${id} (${known}); refused` };
+    const k = known || fixed;
+    if (k && k !== d) return { error: `--model-family ${id}=${decl} contradicts the known family of ${id} (${k}); refused` };
     return { family: d };
   }
   if (known) return { family: known };
+  if (fixed) return { error: `unknown model family: ${id} names the ${fixed} family but is not a known ${fixed} id; declare it with --model-family ${id}=${fixed} (no other family can be declared for it)` };
   return { error: `unknown model family: ${id}; declare it with --model-family <family> (or --model-family ${id}=<family>), one of ${FAMILIES.join(', ')}` };
 }
 // Lenient key for display and back-compat callers: the family, or '' when it cannot be resolved.
