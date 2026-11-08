@@ -9,7 +9,7 @@
 // audit/chain-state.json, so any session can resume with `status`.
 //
 //   start <claims.md> --auditor-model M [--author-model A] [--ombudsman-model O] [--stakes decision|routine]
-//         [--restart] [--repos name=path,...] [--model-family <family> | <id>=<family>,...]
+//         [--restart] [--quarantine-published] [--repos name=path,...] [--model-family <family> | <id>=<family>,...]
 //   record-audit <file> [--model M] [--tokens N] [--repos ...] [--model-family ...] [--ledger <claims.md>]
 //   record-ombudsman <file> [--model O] [--tokens N] [--model-family ...] [--ledger <claims.md>]
 //   abort [--reason TEXT] [--ledger <claims.md>]
@@ -18,7 +18,7 @@
 // Without --ledger the state file is found at ./audit/chain-state.json.
 // Exit: 0 ok · 1 refused (nothing changed) · 2 usage/config error · 3 ESCALATED_TO_OWNER.
 // Zero dependencies, Node >= 18.
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, rmSync, readdirSync, realpathSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, rmSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
@@ -52,7 +52,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a.startsWith('--')) {
       const k = a.slice(2);
-      if (k === 'json' || k === 'restart') { opt[k] = true; continue; }
+      if (k === 'json' || k === 'restart' || k === 'quarantine-published') { opt[k] = true; continue; }
       const v = argv[i + 1];
       if (v === undefined || v.startsWith('--')) throw new Refusal(`--${k} needs a value`, 2);
       opt[k] = v; i++;
@@ -646,11 +646,21 @@ function cmdStart(pos, opt, out, log) {
     // R2-Q1-M5: the published files a restart keeps stay bound to their hashes, but only when the old
     // state still matches its digest (a forged old state cannot hand its hashes to the new chain).
     const pd = existsSync(digestPath(sf)) ? readFileSync(digestPath(sf), 'utf8').trim() : null;
-    if (prev && prev.schema === SCHEMA && pd && pd === chainDigest(prevText, prev)) keptPublished = (prev.published && prev.published.sha256 ? prev.published : prev.kept_published) || null;
+    if (prev && prev.schema === SCHEMA && pd && pd === chainDigest(prevText, prev)) {
+      const h = recordedHashes(prev).all;
+      if (Object.keys(h).length) keptPublished = { ...((prev.published && prev.published.sha256 ? prev.published : prev.kept_published) || {}), sha256: h };
+    }
     if (prev && !opt.restart && (IN_FLIGHT.has(prev.state) || prev.state === 'ESCALATED_TO_OWNER'))
       throw new Refusal(`a chain is ${prev.state} for this ledger; finish it, run abort, or \`start <claims.md> --restart\``);
-    if (opt.restart) log(`restart: discarding the chain in state ${prev ? prev.state : '(unreadable)'}; published audit/ files are kept as they are`);
   }
+  // CP-03 R3-Q1-M6: a published file that no valid recorded hash covers is UNBOUND (forged, or left by a
+  // chain whose state is gone or tampered). A new chain never adopts it as "the last published version":
+  // start refuses and names it, or with --quarantine-published moves it out of audit/ first.
+  const aDir = dirname(sf);
+  const unbound = unboundPublished(aDir, (keptPublished && keptPublished.sha256) || {});
+  if (unbound.length && !opt['quarantine-published'])
+    throw new Refusal(`${unboundMsg(unbound, keptPublished ? 'their bytes differ from the recorded hash, or no hash names them' : (existsSync(sf) ? 'the chain state is unreadable, tampered or of another schema' : 'there is no chain state'))}; nothing started. Inspect ${unbound.length === 1 ? 'it' : 'them'}, then re-run with --quarantine-published to move ${unbound.length === 1 ? 'it' : 'them'} to audit/.quarantine/<timestamp>/ and start`);
+  if (opt.restart && existsSync(sf)) log(`restart: discarding the chain in state ${prev ? prev.state : '(unreadable)'}; published audit/ files bound to a recorded hash are kept as they are`);
 
   const tiers = resolveTiers(rows, log);
   if (tiers.bad.length) throw new Refusal(`tier refused (doc-it enum, K2-02):\n  ${tiers.bad.join('\n  ')}`);
@@ -669,6 +679,17 @@ function cmdStart(pos, opt, out, log) {
     dispatches: [], pending: null, published: false, kept_published: keptPublished, records: [],
     history: [...((prev && Array.isArray(prev.history) && prev.history) || []), { from: prev ? prev.state : null, to: 'LEDGER_READY', event: opt.restart ? 'restart: ledger read' : 'ledger read', at: now(), rows: rows.length }],
   };
+  if (unbound.length) {
+    const q = join(aDir, '.quarantine', now().replace(/[:.]/g, '-'));
+    mkdirSync(q, { recursive: true });
+    for (const f of unbound) renameSync(join(aDir, f), join(q, f));
+    if (keptPublished) {
+      keptPublished.sha256 = Object.fromEntries(Object.entries(keptPublished.sha256).filter(([f]) => !unbound.includes(f)));
+      if (!Object.keys(keptPublished.sha256).length) st.kept_published = null;
+    }
+    st.history[st.history.length - 1].quarantined = { dir: relative(aDir, q), files: unbound };
+    log(`quarantined ${unbound.map((f) => `audit/${f}`).join(', ')} → ${relative(dirname(aDir), q)}/ (PUBLISHED_UNBOUND; not deleted)`);
+  }
   for (const d of ['.work', '.chain']) rmSync(join(dirname(sf), d), { recursive: true, force: true });
   const req = dispatch(st, 'auditor', st.audit.requested, 'audit every row from primary sources');
   move(st, 'AUDITING', 'dispatch auditor');
@@ -848,31 +869,66 @@ function cmdAbort(pos, opt, out, log) {
 }
 
 // CP-03 R2-Q1-M5: published files whose bytes differ from the hash recorded at publish (or are gone).
+// The recorded hashes are this chain's `published` ones plus the `kept_published` ones a restart carried
+// over; once this chain has published, a carried-over file that is gone is not reported (it was replaced).
+export function recordedHashes(st) {
+  const pub = st.published && st.published.sha256 ? st.published.sha256 : {};
+  const kept = st.kept_published && st.kept_published.sha256 ? st.kept_published.sha256 : {};
+  return { all: { ...kept, ...pub }, pub };
+}
 export function publishedTampered(st) {
-  const pub = st.published && st.published.sha256 ? st.published : st.kept_published;
-  if (!pub || !pub.sha256) return [];
+  const { all, pub } = recordedHashes(st);
   const bad = [];
-  for (const [f, h] of Object.entries(pub.sha256)) {
+  for (const [f, h] of Object.entries(all)) {
     const p = join(auditDir(st), f);
-    if (!existsSync(p)) { bad.push({ file: f, why: 'is missing' }); continue; }
+    if (!existsSync(p)) { if (!Object.keys(pub).length || f in pub) bad.push({ file: f, why: 'is missing' }); continue; }
     if (sha256(readFileSync(p, 'utf8')) !== h) bad.push({ file: f, why: 'does not match the sha256 recorded at publish (edited by hand?)' });
   }
   return bad;
 }
+// CP-03 R3-Q1-M6: the files a chain publishes, as found on disk in audit/ (SAFE.md, ombudsman.md,
+// audit-*.md at its top level; never the state, the record copies, the work files or a quarantine).
+export const isPublishedName = (f) => f === 'SAFE.md' || f === 'ombudsman.md' || /^audit-.+\.md$/.test(f);
+export function publishedOnDisk(dir) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir).filter((f) => isPublishedName(f) && statSync(join(dir, f)).isFile()).sort();
+}
+// A published file is BOUND only when a recorded hash in a state that passes its digest covers its
+// exact bytes. Anything else (no state, a tampered state, a file no hash names, a file whose bytes
+// differ) is UNBOUND: nothing vouches for it, so it must never be read as "the last published version".
+export function unboundPublished(dir, hashes = {}) {
+  return publishedOnDisk(dir).filter((f) => !(f in hashes) || sha256(readFileSync(join(dir, f), 'utf8')) !== hashes[f]);
+}
+const unboundMsg = (files, how) => `PUBLISHED_UNBOUND: ${files.map((f) => `audit/${f}`).join(', ')} ${files.length === 1 ? 'is' : 'are'} not covered by any hash recorded in a valid chain state (${how}); do not trust ${files.length === 1 ? 'it' : 'them'}`;
 function cmdStatus(pos, opt, out, log) {
-  const { st } = loadState(opt);
+  // CP-03 R3-Q1-M6: with no state, or a state that fails its digest, every published file on disk is
+  // UNBOUND. Report them and exit 1 (never 2, which reads as "nothing to check").
+  let loaded;
+  try { loaded = loadState(opt); } catch (e) {
+    const dir = opt.ledger ? dirname(statePath(resolve(opt.ledger))) : resolve('audit');
+    const files = e instanceof Refusal ? publishedOnDisk(dir) : [];
+    if (files.length) {
+      log(`${unboundMsg(files, e.message.split(';')[0])}. Re-audit with \`start <claims.md> --restart --quarantine-published\``);
+      if (opt.json) out(JSON.stringify({ state: null, error: e.message, published_unbound: files }, null, 2));
+      throw new Refusal(e.message, 1);
+    }
+    throw e;
+  }
+  const { st } = loaded;
   const changed = st.state === 'LEDGER_READY' ? null : ledgerChanged(st); // PUBLISHABLE too: the SAFE.md is stale
   const tamper = publishedTampered(st);
-  const bad = changed || tamper.length;
-  if (opt.json) { out(JSON.stringify({ ...st, ...(changed ? { ledger_changed: changed } : {}), ...(tamper.length ? { published_tampered: tamper } : {}) }, null, 2)); return bad ? 1 : 0; }
+  const unbound = unboundPublished(auditDir(st), recordedHashes(st).all).filter((f) => !tamper.some((t) => t.file === f));
+  const bad = changed || tamper.length || unbound.length;
+  if (opt.json) { out(JSON.stringify({ ...st, ...(changed ? { ledger_changed: changed } : {}), ...(tamper.length ? { published_tampered: tamper } : {}), ...(unbound.length ? { published_unbound: unbound } : {}) }, null, 2)); return bad ? 1 : 0; }
   if (changed) log(`LEDGER_CHANGED: ${changed}; this chain no longer covers the ledger. Re-audit with \`start <claims.md> --restart\``);
   for (const t of tamper) log(`PUBLISHED_TAMPERED: audit/${t.file} ${t.why}; do not trust the published files. Re-audit with \`start <claims.md> --restart\``);
+  if (unbound.length) log(`${unboundMsg(unbound, 'this chain never recorded them')}. Re-audit with \`start <claims.md> --restart --quarantine-published\``);
   out(`state ${st.state}${st.aborted && st.state === 'LEDGER_READY' ? ` (rolled back after ABORTED from ${st.aborted.from})` : ''}`);
   out(`ledger ${st.ledger} (${st.rows.length} rows); author ${st.author_model}; auditor ${st.auditor_model}; ombudsman ${st.ombudsman_model}`);
   out(`tier enum: ${st.tier_check === 'doc-it' ? 'checked by doc-it' : '[skip] doc-it not installed: tier enum'}`);
   out(`verdicts ${Object.keys(st.audit.verdicts).length}/${st.rows.length}; rulings ${Object.keys(st.rulings).length}/${st.rows.length}`);
   if (st.pending) out(`PENDING ${JSON.stringify(st.pending)}`);
-  if (st.published) out(`published ${st.published.at}: SAFE ${st.published.safe.length}, DO-NOT-PUBLISH ${st.published.do_not_publish.length}${tamper.length ? `; PUBLISHED_TAMPERED: ${tamper.map((t) => t.file).join(', ')}` : '; files match their hashes'}`);
+  if (st.published) out(`published ${st.published.at}: SAFE ${st.published.safe.length}, DO-NOT-PUBLISH ${st.published.do_not_publish.length}${tamper.length ? `; PUBLISHED_TAMPERED: ${tamper.map((t) => t.file).join(', ')}` : (unbound.length ? `; PUBLISHED_UNBOUND: ${unbound.join(', ')}` : '; files match their hashes')}`);
   return st.state === 'ESCALATED_TO_OWNER' ? 3 : (bad ? 1 : 0);
 }
 

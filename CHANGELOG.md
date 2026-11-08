@@ -31,6 +31,11 @@ All notable changes to the `review-it` plugin.
   edit of SAFE.md, ombudsman.md or the audit file. Consumers run `status` before trusting SAFE.md (R2-Q1-M5).
 - `ls`/`cat` with no path or a device path are not evidence; a `--repos` path must be a repo top level whose
   folder or remote carries the declared name; an empty `Repos:` header no longer reads the next line (R2-L5, R2-L6, R2-L7).
+- A published file (`SAFE.md`, `ombudsman.md`, `audit-*.md`) that no hash in a valid chain state covers is
+  UNBOUND. `start` (with or without `--restart`) refuses and names it; `--quarantine-published` moves it to
+  `audit/.quarantine/<timestamp>/` first. `status` exits 1 with `PUBLISHED_UNBOUND`, also when the state is
+  missing or fails its digest. A forged SAFE.md can no longer survive a restart from a tampered or deleted
+  state (R3-Q1-M6).
 
 ## [2.1.1] — 2026-10-18
 
