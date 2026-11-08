@@ -29,6 +29,8 @@ All notable changes to the `review-it` plugin.
   and an id naming two families is refused (R2-Q1-M4).
 - The published files are hashed into the chain state; `status` exits 1 with `PUBLISHED_TAMPERED` after a hand
   edit of SAFE.md, ombudsman.md or the audit file. Consumers run `status` before trusting SAFE.md (R2-Q1-M5).
+- `ls`/`cat` with no path or a device path are not evidence; a `--repos` path must be a repo top level whose
+  folder or remote carries the declared name; an empty `Repos:` header no longer reads the next line (R2-L5, R2-L6, R2-L7).
 
 ## [2.1.1] — 2026-10-18
 
