@@ -9,8 +9,8 @@
 // audit/chain-state.json, so any session can resume with `status`.
 //
 //   start <claims.md> --auditor-model M [--author-model A] [--ombudsman-model O] [--stakes decision|routine]
-//         [--model-family <family> | <id>=<family>,...]
-//   record-audit <file> [--model M] [--tokens N] [--model-family ...] [--ledger <claims.md>]
+//         [--repos name=path,...] [--model-family <family> | <id>=<family>,...]
+//   record-audit <file> [--model M] [--tokens N] [--repos ...] [--model-family ...] [--ledger <claims.md>]
 //   record-ombudsman <file> [--model O] [--tokens N] [--model-family ...] [--ledger <claims.md>]
 //   abort [--reason TEXT] [--ledger <claims.md>]
 //   status [--json] [--ledger <claims.md>]
@@ -31,9 +31,15 @@ export const VERDICTS = ['TRUE', 'FALSE', 'PARTIAL', 'UNVERIFIABLE'];
 export const STATE_ALIASES = { AUDIT_RETRY: 'AUDIT_RETRY_FAILED', REAUDIT_SAMPLE: 'PARTIAL_TRUST' };
 const IN_FLIGHT = new Set(['AUDITING', 'AUDIT_RETRY_FAILED', 'AUDITED', 'ADJUDICATING', 'PARTIAL_TRUST', 'ADJUDICATED']);
 const FAMILIES = ['opus', 'sonnet', 'haiku', 'fable', 'gpt', 'gemini', 'llama', 'mistral', 'grok', 'deepseek', 'qwen', 'codex'];
-// A command may start with env assignments (`A=b cmd`) or a shell construct (`for … do … done`, `cd x && …`).
-const CMD_WORDS = /^(?:[A-Z_][A-Z0-9_]*=\S*\s+)*(git|node|npm|npx|gh|grep|rg|ls|cat|find|curl|jq|sed|awk|head|tail|wc|diff|stat|bash|sh|zsh|python3?|test|doc-it|gate-check|for|while|if|cd|env|xargs|sort|uniq|tr|cut|printf|echo|shasum|sha256sum|md5|du|file|readlink|realpath|date|cmp)\b/;
-
+// Evidence commands (CP-03 Q1-M1). A backticked command counts as evidence only when some part of it
+// runs a DATA word: a tool that reads a source (git, grep, cat, node …). Words that only print what
+// they are given (echo, printf, true, :, test, date) produce no evidence on their own; shell glue
+// (cd, for/do/done, if/then, env, xargs, A=b) is skipped to find the command it wraps.
+const DATA_WORDS = new Set(['git', 'node', 'npm', 'npx', 'gh', 'grep', 'rg', 'ls', 'cat', 'find', 'curl', 'jq', 'sed', 'awk', 'head', 'tail', 'wc',
+  'diff', 'stat', 'python', 'python3', 'doc-it', 'gate-check', 'sort', 'uniq', 'tr', 'cut', 'shasum', 'sha256sum', 'md5', 'du', 'file',
+  'readlink', 'realpath', 'cmp', 'git-show', 'tree', 'nl', 'od', 'xxd', 'strings', 'less', 'more']);
+const SHELLS = new Set(['bash', 'sh', 'zsh']);
+const GLUE = new Set(['env', 'xargs', 'time', 'nohup', 'command', 'sudo', 'then', 'do', 'else', 'elif', '!', '(', '{', 'exec']);
 // ---------- small utilities ----------
 class Refusal extends Error { constructor(msg, code = 1) { super(msg); this.code = code; } }
 const now = () => new Date().toISOString();
@@ -224,17 +230,81 @@ export function parseLedger(text) {
     id: cleanId(r.id), claim: r.claim, tier: r.tier, source: r.source, line: r._line,
   })).filter((r) => r.id);
   const author = headerValue(text, ['author model', 'author_model', 'author-model']);
-  return { rows, author };
+  const rm = text.match(/^\s*(?:[-*]\s*)?(?:\*\*)?repos(?:\*\*)?\s*:\s*(.+)$/im);
+  return { rows, author, repos: rm ? rm[1].replace(/`/g, '').trim() : null };
 }
 
-// Evidence must cite repo@sha or a command (T-Q1-01). A backticked path alone is not a command.
+// Does this command read a data source? Splits on && || ; | and newlines, looks inside $(…) and
+// `sh -c '…'`, skips env assignments and glue words, and asks whether any part runs a DATA word.
+export function producesEvidence(cmd, depth = 0) {
+  const c = String(cmd || '');
+  if (depth > 4) return false;
+  for (const m of c.matchAll(/\$\(([^()]*)\)/g)) if (producesEvidence(m[1], depth + 1)) return true;
+  for (const seg of c.split(/&&|\|\||[;|\n]/)) {
+    const words = seg.trim().split(/\s+/).filter(Boolean);
+    let i = 0;
+    while (i < words.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i]) || GLUE.has(words[i]) || /^-/.test(words[i]) && GLUE.has(words[i - 1]))) i++;
+    const w = (words[i] || '').replace(/^.*\//, '');
+    if (DATA_WORDS.has(w)) return true;
+    if (SHELLS.has(w)) {
+      const k = words.indexOf('-c', i);
+      if (k > 0 && producesEvidence(words.slice(k + 1).join(' ').replace(/^['"]|['"]$/g, ''), depth + 1)) return true;
+      if (k < 0 && words[i + 1] && !/^-/.test(words[i + 1])) return true; // `bash script.sh` runs a file
+    }
+  }
+  return false;
+}
+// Citations in an evidence cell: `repo@sha[:path[:line]]` and the git-show form `<sha>:<path>[:line]`.
+export function citations(ev) {
+  const s = String(ev || ''), out = [];
+  for (const m of s.matchAll(/([A-Za-z0-9._/-]+)@([0-9a-f]{7,40})\b(?::([A-Za-z0-9._/-]*[A-Za-z0-9_/-]))?/g))
+    out.push({ text: m[0], repo: m[1].replace(/^.*\//, ''), sha: m[2], path: m[3] && !/^\d+(-\d+)?$/.test(m[3]) ? m[3] : null });
+  for (const m of s.matchAll(/(^|[\s`(])([0-9a-f]{7,40}):([A-Za-z0-9._/-]*[A-Za-z0-9_/-])/g))
+    out.push({ text: `${m[2]}:${m[3]}`, repo: null, sha: m[2], path: m[3] });
+  return out;
+}
+// Evidence must cite repo@sha or a command (T-Q1-01). A backticked path alone is not a command, and a
+// command that reads no data source (Q1-M1: `echo TRUE`) is not evidence. Format only; see verifyEvidence.
 export function evidenceOk(ev) {
   const s = String(ev || '');
-  if (/[A-Za-z0-9._/-]+@[0-9a-f]{7,40}\b/.test(s)) return true;
-  // `<sha>:<path>[:line]` (git show form) is the same primary citation without the repo prefix.
-  if (/(^|[\s`(])[0-9a-f]{7,40}:[A-Za-z0-9._/-]+/.test(s)) return true;
-  for (const m of s.matchAll(/`([^`]+)`/g)) if (CMD_WORDS.test(m[1].trim())) return true;
+  if (citations(s).length) return true;
+  for (const m of s.matchAll(/`([^`]+)`/g)) if (producesEvidence(m[1].trim())) return true;
   return false;
+}
+// Q1-M1: every citation must resolve. A sha is looked up with `git cat-file -e` (offline, local) in the
+// repos the chain knows (`Repos:` ledger header, --repos name=path). `repo@sha` is checked in that repo;
+// a bare `<sha>:<path>` in every known repo. No resolvable repo → the citation is "unchecked", and an
+// unchecked or missing citation leaves the row uncovered (decision stakes). → { ok, reason, checks }
+const gitCache = new Map();
+function gitHas(repoPath, obj) {
+  const k = `${repoPath}\0${obj}`;
+  if (!gitCache.has(k)) gitCache.set(k, spawnSync('git', ['-C', repoPath, 'cat-file', '-e', obj], { encoding: 'utf8' }).status === 0);
+  return gitCache.get(k);
+}
+function isRepo(p) { return !!p && existsSync(p) && spawnSync('git', ['-C', p, 'rev-parse', '--git-dir'], { encoding: 'utf8' }).status === 0; }
+export function verifyEvidence(ev, repos = {}) {
+  if (!evidenceOk(ev)) return { ok: false, reason: 'evidence cites no repo@sha and no command', checks: [] };
+  const usable = Object.fromEntries(Object.entries(repos).filter(([, p]) => isRepo(p)));
+  const checks = citations(ev).map((c) => {
+    const obj = c.path ? `${c.sha}:${c.path}` : c.sha;
+    const where = c.repo ? (usable[c.repo] ? [[c.repo, usable[c.repo]]] : []) : Object.entries(usable);
+    if (!where.length) return { cite: c.text, status: 'unchecked', why: c.repo ? `repo "${c.repo}" not known (pass --repos ${c.repo}=<path>)` : 'no repo known (pass --repos <name>=<path>)' };
+    const hit = where.find(([, p]) => gitHas(p, obj));
+    return hit ? { cite: c.text, status: 'ok', repo: hit[0] } : { cite: c.text, status: 'missing', why: `${obj} does not exist in ${where.map(([n]) => n).join(', ')}` };
+  });
+  const bad = checks.filter((c) => c.status !== 'ok');
+  if (bad.length) return { ok: false, reason: bad.map((c) => `${c.cite} ${c.status}: ${c.why}`).join('; '), checks };
+  return { ok: true, reason: '', checks };
+}
+// Repos: `name=path,…` from the ledger header and --repos; relative paths resolve against `base`.
+export function parseRepos(v, base) {
+  const out = {};
+  for (const part of String(v || '').split(/[,\s]+/).map((x) => x.trim()).filter(Boolean)) {
+    const eq = part.indexOf('=');
+    if (eq <= 0) throw new Refusal(`--repos / Repos: expects name=path, got "${part}"`, 2);
+    out[part.slice(0, eq)] = resolve(base, part.slice(eq + 1));
+  }
+  return out;
 }
 const verdictWord = (v) => {
   const w = String(v || '').replace(/[*_`]/g, '').trim().toUpperCase().split(/[\s(—–:-]+/)[0];
@@ -383,7 +453,8 @@ function cmdStart(pos, opt, out, log) {
   }
 
   const text = readFileSync(ledger, 'utf8');
-  const { rows, author } = parseLedger(text);
+  const { rows, author, repos: headerRepos } = parseLedger(text);
+  const repos = { ...parseRepos(headerRepos, dirname(ledger)), ...parseRepos(opt.repos, process.cwd()) };
   if (!rows.length) throw new Refusal(`${ledgerArg}: no ledger table with ID | Claim | Tier | Source columns`);
   const dup = rows.map((r) => r.id).filter((id, i, a) => a.indexOf(id) !== i);
   if (dup.length) throw new Refusal(`${ledgerArg}: duplicate row id(s) ${[...new Set(dup)].join(', ')}`);
@@ -419,7 +490,7 @@ function cmdStart(pos, opt, out, log) {
   const st = {
     schema: SCHEMA, ledger, ledger_sha256: sha256(text), stakes,
     author_model: authorModel, auditor_model: auditorModel, ombudsman_model: ombudsmanModel,
-    model_families: families, families: { author: fam.author || fam['ledger author'], auditor: fam.auditor, ombudsman: fam.ombudsman },
+    model_families: families, repos, families: { author: fam.author || fam['ledger author'], auditor: fam.auditor, ombudsman: fam.ombudsman },
     tier_check: tiers.check,
     rows: rows.map(({ id, claim, tier, source, tier_ids }) => ({ id, claim, tier, source, tier_ids: tier_ids || null })),
     state: 'LEDGER_READY',
@@ -460,11 +531,15 @@ function cmdRecordAudit(pos, opt, out, log) {
   const byId = new Map();
   for (const r of parsed.rows) if (!byId.has(r.id)) byId.set(r.id, r);
   const uncovered = [];
+  const repos = { ...(st.repos || {}), ...parseRepos(opt.repos, process.cwd()) };
+  const checked = new Map();
   for (const id of requested) {
     const r = byId.get(id);
     if (!r) { uncovered.push(`${id} (no row)`); continue; }
     if (!r.verdict) { uncovered.push(`${id} (verdict "${r.raw}" not one of ${VERDICTS.join('|')})`); continue; }
-    if (!evidenceOk(r.evidence)) { uncovered.push(`${id} (evidence cites no repo@sha and no command)`); continue; }
+    const v = verifyEvidence(r.evidence, repos);
+    checked.set(id, v);
+    if (!v.ok) { uncovered.push(`${id} (${v.reason})`); continue; }
   }
   const unknown = parsed.rows.filter((r) => !st.rows.some((x) => x.id === r.id)).map((r) => r.id);
   if (unknown.length) log(`note: verdict rows not in the ledger ignored: ${unknown.join(', ')}`);
@@ -472,7 +547,7 @@ function cmdRecordAudit(pos, opt, out, log) {
   const round = st.state === 'PARTIAL_TRUST' ? 'recheck' : (st.audit.attempt > 1 ? 'retry' : 'initial');
   for (const id of requested) {
     const r = byId.get(id);
-    if (r && r.verdict && evidenceOk(r.evidence)) st.audit.verdicts[id] = { verdict: r.verdict, evidence: r.evidence, round };
+    if (r && r.verdict && checked.get(id) && checked.get(id).ok) st.audit.verdicts[id] = { verdict: r.verdict, evidence: r.evidence, round, checks: checked.get(id).checks };
   }
   const missing = requested.filter((id) => !(st.audit.verdicts[id] && (round !== 'recheck' || st.audit.verdicts[id].round === 'recheck')));
 

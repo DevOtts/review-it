@@ -5,8 +5,8 @@ import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { workspace, run, state, exists, read, cleanup } from './helpers.mjs';
-import { resolveFamily } from '../../scripts/audit-chain.mjs';
+import { workspace, run, state, exists, read, cleanup, REPOS, REPO } from './helpers.mjs';
+import { resolveFamily, verifyEvidence, producesEvidence } from '../../scripts/audit-chain.mjs';
 
 after(cleanup);
 
@@ -71,4 +71,56 @@ test('Q1-H1 (c) a verdict file from an unknown model is refused at record-audit,
   assert.equal(r.status, 1);
   assert.match(r.stderr, /unknown model family: sonnetplan/);
   assert.equal(state(ws).state, 'AUDITING');
+});
+
+const verdicts = (rows, model = 'sonnet') => ['# a', '', `model: ${model}`, '', '| ID | Verdict | Evidence |', '|---|---|---|', ...rows.map(([id, v, e]) => `| ${id} | ${v} | ${e} |`), ''].join('\n');
+const rulings = (rows, model = 'opus') => ['# o', '', `model: ${model}`, '', '| ID | Ruling | Reason |', '|---|---|---|', ...rows.map(([id, r]) => `| ${id} | ${r} | |`), ''].join('\n');
+
+test('Q1-M1 a sha that does not exist and an `echo` command are not evidence: the chain never publishes them', () => {
+  const ws = workspace('chain');
+  const ledger = opusLedger(ws);
+  assert.equal(run(['start', ledger, '--auditor-model', 'sonnet', ...REPOS], { home: ws.home }).status, 0);
+  const attack = verdicts([['C1', 'TRUE', 'nosuchrepo@deadbeef00'], ['C2', 'TRUE', '`echo TRUE`']]);
+  writeFileSync(join(ws.dir, 'v.md'), attack);
+  const a1 = run(['record-audit', join(ws.dir, 'v.md'), '--ledger', ledger], { home: ws.home });
+  assert.equal(a1.status, 0, a1.stderr);
+  assert.match(a1.stderr, /C1 \(nosuchrepo@deadbeef00 unchecked: repo "nosuchrepo" not known/);
+  assert.match(a1.stderr, /C2 \(evidence cites no repo@sha and no command\)/);
+  assert.deepEqual(a1.dispatches[0].rows, ['C1', 'C2'], 'both rows sent back to the auditor');
+  const a2 = run(['record-audit', join(ws.dir, 'v.md'), '--ledger', ledger], { home: ws.home });
+  assert.equal(a2.status, 3, 'second miss escalates');
+  assert.equal(state(ws).state, 'ESCALATED_TO_OWNER');
+  // The reviewer's ombudsman file (UPHELD both) has nowhere to land.
+  writeFileSync(join(ws.dir, 'o.md'), rulings([['C1', 'UPHELD'], ['C2', 'UPHELD']]));
+  assert.equal(run(['record-ombudsman', join(ws.dir, 'o.md'), '--ledger', ledger], { home: ws.home }).status, 1);
+  assert.ok(!exists(ws, 'audit/SAFE.md'), 'no SAFE.md');
+});
+
+test('Q1-M1 (b) cited shas are looked up with git cat-file in the known repos; unknown repo = unchecked = uncovered', () => {
+  const repos = { 'review-it': REPO };
+  assert.equal(verifyEvidence('review-it@eed4dec:LICENSE:1', repos).ok, true);
+  assert.equal(verifyEvidence('`git show eed4dec:LICENSE | head -1`', repos).ok, true);
+  const fake = verifyEvidence('review-it@deadbeef00', repos);
+  assert.equal(fake.ok, false); assert.match(fake.reason, /deadbeef00 missing: deadbeef00 does not exist in review-it/);
+  const nopath = verifyEvidence('`git show eed4dec:no/such/file.md`', repos);
+  assert.equal(nopath.ok, false); assert.match(nopath.reason, /eed4dec:no\/such\/file.md missing/);
+  const none = verifyEvidence('review-it@eed4dec:LICENSE', {});
+  assert.equal(none.ok, false); assert.match(none.reason, /unchecked/);
+  assert.equal(verifyEvidence('`git status --short` -> empty', {}).ok, true, 'a data command with no sha needs no repo');
+  // Commands that read no data source are refused, also behind shell glue.
+  for (const c of ['echo TRUE', 'printf TRUE', 'true', ':', 'test -f x', 'date', 'cd x && echo TRUE', "bash -c 'echo TRUE'", 'env A=1 echo TRUE'])
+    assert.equal(producesEvidence(c), false, c);
+  for (const c of ['git log -1', 'cd repo && git log -1', 'echo $(git rev-parse HEAD)', "bash -c 'grep x f'", 'A=b node s.mjs'])
+    assert.equal(producesEvidence(c), true, c);
+});
+
+test('Q1-M1 (c) the ledger header `Repos:` names the repos, relative to the ledger', () => {
+  const ws = workspace('chain');
+  const ledger = join(ws.dir, 'r.md');
+  writeFileSync(ledger, read(ws, 'claims.md').replace('Author model: claude-sonnet-5-5', `Author model: claude-sonnet-5-5\nRepos: review-it=${REPO}`));
+  assert.equal(run(['start', ledger, '--auditor-model', 'claude-haiku-5-5'], { home: ws.home }).status, 0);
+  assert.equal(state(ws).repos['review-it'], REPO);
+  const a = run(['record-audit', join(ws.dir, 'audit-full.md'), '--ledger', ledger], { home: ws.home });
+  assert.equal(a.status, 0, a.stderr);
+  assert.equal(a.dispatches[0].role, 'ombudsman');
 });

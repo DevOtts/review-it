@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { writeFileSync } from 'node:fs';
-import { workspace, run, state, exists, read, cleanup } from './helpers.mjs';
+import { workspace, run, state, exists, read, cleanup, REPOS } from './helpers.mjs';
 import { findDocIt } from '../../scripts/audit-chain.mjs';
 
 after(cleanup);
@@ -23,7 +23,7 @@ test('T-K2-02 3-row ledger: each row carries a tier from doc-it\'s enum; an unkn
 
   const ws = workspace('tiers');
   const env = { DOC_IT_CLI: DOC };
-  const s = run(['start', ws.ledger, '--auditor-model', 'claude-haiku-5-5'], { home: ws.home, env });
+  const s = run(['start', ws.ledger, '--auditor-model', 'claude-haiku-5-5', ...REPOS], { home: ws.home, env });
   assert.equal(s.status, 0, s.stderr);
   assert.doesNotMatch(s.stderr, /\[skip\] doc-it/);
   const st = state(ws);
@@ -38,7 +38,7 @@ test('T-K2-02 3-row ledger: each row carries a tier from doc-it\'s enum; an unkn
   assert.match(run(['status', '--ledger', ws.ledger], { home: ws.home, env }).stdout, /tier enum: checked by doc-it/);
 
   const ws2 = workspace('tiers');
-  const bad = run(['start', join(ws2.dir, 'claims-unknown-tier.md'), '--auditor-model', 'claude-haiku-5-5'], { home: ws2.home, env });
+  const bad = run(['start', join(ws2.dir, 'claims-unknown-tier.md'), '--auditor-model', 'claude-haiku-5-5', ...REPOS], { home: ws2.home, env });
   assert.equal(bad.status, 1);
   assert.match(bad.stderr, /tier refused/);
   assert.match(bad.stderr, /T2: tier "hearsay" has unknown part "hearsay"/);
@@ -49,7 +49,7 @@ test('T-K2-02 3-row ledger: each row carries a tier from doc-it\'s enum; an unkn
 test('T-K2-02 (b) the published audit file carries each row\'s tier', { skip }, () => {
   const ws = workspace('tiers');
   const env = { DOC_IT_CLI: DOC };
-  run(['start', ws.ledger, '--auditor-model', 'claude-haiku-5-5'], { home: ws.home, env });
+  run(['start', ws.ledger, '--auditor-model', 'claude-haiku-5-5', ...REPOS], { home: ws.home, env });
   const audit = ['# a', '', 'model: claude-haiku-5-5', '', '| ID | Verdict | Evidence |', '|---|---|---|',
     '| T1 | TRUE | review-it@eed4dec:plugins/review-it/.claude-plugin/plugin.json:4 |',
     '| T2 | TRUE | `git log -1 --format=%h eed4dec` |',

@@ -9,6 +9,12 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 export const CHAIN = join(here, '../../scripts/audit-chain.mjs');
 export const FIX = join(here, '../fixtures/audit');
+// The review-it repo this suite runs in: the fixtures cite its real commits (eed4dec, ca86985), and
+// the chain verifies every cited sha with `git cat-file -e` (CP-03 Q1-M1).
+export const REPO = spawnSync('git', ['-C', here, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' }).stdout.trim();
+if (!REPO || spawnSync('git', ['-C', REPO, 'cat-file', '-e', 'eed4dec'], { encoding: 'utf8' }).status !== 0)
+  throw new Error(`audit tests need a full review-it git checkout (commit eed4dec); got "${REPO}"`);
+export const REPOS = ['--repos', `review-it=${REPO}`];
 
 const made = [];
 export function tmp(prefix = 'rev-audit-') { const d = mkdtempSync(join(tmpdir(), prefix)); made.push(d); return d; }

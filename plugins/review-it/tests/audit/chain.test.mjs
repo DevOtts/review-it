@@ -5,11 +5,11 @@ import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { workspace, run, state, exists, read, states, tmp, cleanup } from './helpers.mjs';
+import { workspace, run, state, exists, read, states, tmp, cleanup, REPOS } from './helpers.mjs';
 
 after(cleanup);
 const L = (ws) => ['--ledger', ws.ledger];
-const AUD = ['--auditor-model', 'claude-haiku-5-5'];
+const AUD = ['--auditor-model', 'claude-haiku-5-5', ...REPOS];
 
 test('T-Q1-02 auditor file missing 3 rows → AUDIT_RETRY_FAILED, one re-dispatch with those rows; second miss → ESCALATED_TO_OWNER, nothing published', () => {
   const ws = workspace('chain');
