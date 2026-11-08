@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { workspace, run, state, exists, read, cleanup, REPOS, REPO } from './helpers.mjs';
-import { resolveFamily, producesEvidence, verifyEvidence } from '../../scripts/audit-chain.mjs';
+import { resolveFamily, producesEvidence, verifyEvidence, parseLedger } from '../../scripts/audit-chain.mjs';
 
 after(cleanup);
 
@@ -170,3 +170,15 @@ test('R2-L6 a --repos path must be a repo top level whose folder or remote match
   assert.equal(verifyEvidence('review-it@eed4dec:LICENSE', { 'review-it': REPO }).ok, true);
 });
 
+test('R2-L7 an empty Repos: header does not read the next line', () => {
+  const p = parseLedger(['# l', 'Repos:', 'Author model: opus', '', '| ID | Claim | Tier | Source |', '|---|---|---|---|', '| C1 | a | code | b |', ''].join('\n'));
+  assert.equal(p.repos, '');
+  assert.equal(p.author, 'opus');
+  const ws = workspace('chain');
+  const ledger = join(ws.dir, 'e.md');
+  writeFileSync(ledger, read(ws, 'claims.md').replace('Author model: claude-sonnet-5-5', 'Repos:\nAuthor model: claude-sonnet-5-5'));
+  const r = run(['start', ledger, '--auditor-model', 'claude-haiku-5-5'], { home: ws.home });
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stderr, /got "\|"/);
+  assert.deepEqual(state(ws).repos, {});
+});

@@ -246,7 +246,7 @@ export function parseLedger(text) {
     id: cleanId(r.id), claim: r.claim, tier: r.tier, source: r.source, line: r._line,
   })).filter((r) => r.id);
   const author = headerValue(text, ['author model', 'author_model', 'author-model']);
-  const rm = text.match(/^\s*(?:[-*]\s*)?(?:\*\*)?repos(?:\*\*)?\s*:\s*(.+)$/im);
+  const rm = text.match(/^[ \t]*(?:[-*][ \t]*)?(?:\*\*)?repos(?:\*\*)?[ \t]*:[ \t]*([^\n]*)$/im); // R2-L7: one line only
   return { rows, author, repos: rm ? rm[1].replace(/`/g, '').trim() : null };
 }
 
