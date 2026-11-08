@@ -39,6 +39,9 @@ All notable changes to the `review-it` plugin.
 - Lookalike model ids are folded before family matching (NFKC, confusable Greek/Cyrillic letters to Latin,
   0→o, 1→l, 5→s inside a word, separated letters read joined up), so `οpus`, `ｏｐｕｓ`, `claude-0pus-5-5`,
   `o-p-u-s` are `opus` and cannot be declared another family; an id still holding non-ASCII is refused (R3-L4).
+- Runtime and router words (`ollama`, `openrouter`, `groq`, `together` …) are read as provider prefixes, so
+  `ollama/qwen2.5:7b`, `ollama/mistral` and `ollama/deepseek-r1` resolve to their family instead of being refused
+  as "more than one family (llama, …)"; an id naming only a router is refused (R4-L8).
 
 ## [2.1.1] — 2026-10-18
 

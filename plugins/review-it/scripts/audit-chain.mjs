@@ -85,7 +85,13 @@ export const MODEL_FAMILIES = {
   tiers: ['latest', 'preview', 'exp', 'experimental', 'thinking', 'mini', 'nano', 'pro', 'flash', 'lite', 'turbo', 'instruct', 'chat',
     'high', 'low', 'medium', 'large', 'small', 'max', 'r', 'fast', 'plan', 'codex', 'coder', 'v', 'k', 'm', 'b', 'context', 'beta', 'stable', 'ultra', 'plus'],
   prefixes: ['us', 'eu', 'apac', 'global', 'anthropic', 'claude', 'bedrock', 'vertex', 'models', 'openai', 'google', 'meta', 'x', 'ai', 'xai'],
+  // CP-03 R4-L8: runtimes and routers that serve many families. Each is a whole word that names no model,
+  // and `ollama` merely CONTAINS `llama`; read as a prefix it is skipped, never searched for a family inside
+  // it. Only a whole word of the id is a router: `ollamaopus` is still one word holding two families.
+  routers: ['ollama', 'openrouter', 'groq', 'together', 'togetherai', 'fireworks', 'accounts', 'lmstudio', 'huggingface', 'hf',
+    'azure', 'deepinfra', 'replicate', 'cerebras', 'sambanova', 'vllm', 'local'],
 };
+MODEL_FAMILIES.prefixes.push(...MODEL_FAMILIES.routers);
 // CP-03 R3-L4: lookalike ids. Before any family matching the id is NFKC-normalised (fullwidth `ｏｐｕｓ` →
 // `opus`), lower-cased, and confusable Greek / Cyrillic letters are folded to the Latin letter they imitate
 // (Greek `οpus` → `opus`). An id that still holds a non-ASCII character after that is refused. Separately,
@@ -124,6 +130,9 @@ export function resolveFamily(m, declared = {}) {
     return { error: `model id "${id}" is a host pointer, not a model; pass the concrete model id (G-6 cannot be checked against "${id}")` };
   let i = 0;
   while (i < words.length && (MODEL_FAMILIES.prefixes.includes(words[i]) || /^\d+$/.test(words[i]))) i++; // claude-3-5-sonnet
+  // R4-L8: an id made only of provider, router, number and tier words (`ollama`, `ollama:latest`) names no model.
+  if (words.slice(i).every((w) => /^\d+$/.test(w) || MODEL_FAMILIES.tiers.includes(w)) && words.some((w) => MODEL_FAMILIES.routers.includes(w)))
+    return { error: `model id "${id}" names only a runtime or router (${words.filter((w) => MODEL_FAMILIES.routers.includes(w)).join(', ')}), not a model; pass the model it serves (e.g. ollama/qwen2.5:7b)` };
   const head = words[i];
   const fam = head && (FAMILIES.includes(head) ? head : MODEL_FAMILIES.aliases[head]);
   const tailOk = words.slice(i + 1).every((w) => /^\d+$/.test(w) || MODEL_FAMILIES.tiers.includes(w));
