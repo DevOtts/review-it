@@ -155,3 +155,18 @@ test('R2-L5 `ls` and `cat` with no path argument, or reading /dev/*, are not evi
     assert.equal(producesEvidence(c), true, c);
   assert.equal(verifyEvidence('`ls`', {}).ok, false);
 });
+
+test('R2-L6 a --repos path must be a repo top level whose folder or remote matches the repo name', () => {
+  // `x=` resolves to the ledger folder; git -C would walk up to an enclosing repo. Refused as unchecked.
+  const sub = join(REPO, 'plugins');
+  const v = verifyEvidence('review-it@eed4dec:LICENSE', { 'review-it': sub });
+  assert.equal(v.ok, false);
+  assert.match(v.reason, /unchecked: .*not the top level of a git repo/);
+  // A real repo under another name: neither its folder nor its remote is "do-it".
+  const w = verifyEvidence('do-it@eed4dec:LICENSE', { 'do-it': REPO });
+  assert.equal(w.ok, false);
+  assert.match(w.reason, /unchecked: .*neither its folder nor its origin remote is named "do-it"/);
+  // The suite's own repo resolves (its origin remote is review-it).
+  assert.equal(verifyEvidence('review-it@eed4dec:LICENSE', { 'review-it': REPO }).ok, true);
+});
+

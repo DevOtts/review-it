@@ -304,14 +304,40 @@ function gitHas(repoPath, obj) {
   if (!gitCache.has(k)) gitCache.set(k, spawnSync('git', ['-C', repoPath, 'cat-file', '-e', obj], { encoding: 'utf8' }).status === 0);
   return gitCache.get(k);
 }
-function isRepo(p) { return !!p && existsSync(p) && spawnSync('git', ['-C', p, 'rev-parse', '--git-dir'], { encoding: 'utf8' }).status === 0; }
+// CP-03 R2-L6: a declared repo counts only when its path is the top level of a git repo (so `x=` does
+// not walk up to an enclosing repo) and its folder or one of its remotes carries the declared name (so
+// `review-it=<do-it tree>` cannot make a do-it sha "verify" a review-it claim). → null, or why not.
+const repoCache = new Map();
+export function repoProblem(name, p) {
+  const k = `${name}\0${p}`;
+  if (repoCache.has(k)) return repoCache.get(k);
+  let why = null;
+  const top = p && existsSync(p) ? spawnSync('git', ['-C', p, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' }) : null;
+  if (!top || top.status !== 0) why = `${p} is not a git repo`;
+  else {
+    let real = p; try { real = realpathSync.native(p); } catch { /* keep p */ }
+    let t = top.stdout.trim(); try { t = realpathSync.native(t); } catch { /* keep t */ }
+    if (real !== t) why = `${p} is not the top level of a git repo (that is ${t})`;
+    else {
+      const strip = (u) => u.replace(/\/+$/, '').replace(/\.git$/, '').replace(/^.*[/:]/, '').toLowerCase();
+      const remotes = spawnSync('git', ['-C', p, 'remote', '-v'], { encoding: 'utf8' }).stdout.split('\n').map((l) => l.split(/\s+/)[1]).filter(Boolean).map(strip);
+      const n = String(name).toLowerCase();
+      if (strip(t) !== n && !remotes.includes(n)) why = `neither its folder nor its origin remote is named "${name}" (${t})`;
+    }
+  }
+  repoCache.set(k, why);
+  return why;
+}
 export function verifyEvidence(ev, repos = {}) {
   if (!evidenceOk(ev)) return { ok: false, reason: 'evidence cites no repo@sha and no command', checks: [] };
-  const usable = Object.fromEntries(Object.entries(repos).filter(([, p]) => isRepo(p)));
+  const usable = Object.fromEntries(Object.entries(repos).filter(([n, p]) => !repoProblem(n, p)));
   const checks = citations(ev).map((c) => {
     const obj = c.path ? `${c.sha}:${c.path}` : c.sha;
     const where = c.repo ? (usable[c.repo] ? [[c.repo, usable[c.repo]]] : []) : Object.entries(usable);
-    if (!where.length) return { cite: c.text, status: 'unchecked', why: c.repo ? `repo "${c.repo}" not known (pass --repos ${c.repo}=<path>)` : 'no repo known (pass --repos <name>=<path>)' };
+    if (!where.length) {
+      const prob = c.repo && repos[c.repo] ? repoProblem(c.repo, repos[c.repo]) : null;
+      return { cite: c.text, status: 'unchecked', why: prob ? `--repos ${c.repo}=${repos[c.repo]}: ${prob}` : c.repo ? `repo "${c.repo}" not known (pass --repos ${c.repo}=<path>)` : 'no repo known (pass --repos <name>=<path>)' };
+    }
     const hit = where.find(([, p]) => gitHas(p, obj));
     return hit ? { cite: c.text, status: 'ok', repo: hit[0] } : { cite: c.text, status: 'missing', why: `${obj} does not exist in ${where.map(([n]) => n).join(', ')}` };
   });
