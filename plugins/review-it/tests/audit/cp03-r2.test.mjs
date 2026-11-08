@@ -5,8 +5,8 @@ import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { workspace, run, state, exists, read, cleanup, REPOS } from './helpers.mjs';
-import { resolveFamily } from '../../scripts/audit-chain.mjs';
+import { workspace, run, state, exists, read, cleanup, REPOS, REPO } from './helpers.mjs';
+import { resolveFamily, producesEvidence, verifyEvidence } from '../../scripts/audit-chain.mjs';
 
 after(cleanup);
 
@@ -146,4 +146,12 @@ test('R2-Q1-M5 (c) the files a restart or abort keeps stay bound to their hashes
   const s = run(['status', '--ledger', ledger], { home: ws.home });
   assert.equal(s.status, 1);
   assert.match(s.stderr, /PUBLISHED_TAMPERED: audit\/SAFE.md/);
+});
+
+test('R2-L5 `ls` and `cat` with no path argument, or reading /dev/*, are not evidence', () => {
+  for (const c of ['ls', 'cat /dev/null', 'ls -la', 'cat', 'cd x && ls', 'cat < /dev/null'])
+    assert.equal(producesEvidence(c), false, c);
+  for (const c of ['ls docs/', 'cat LICENSE', 'git show eed4dec:LICENSE | cat', 'cat -n README.md'])
+    assert.equal(producesEvidence(c), true, c);
+  assert.equal(verifyEvidence('`ls`', {}).ok, false);
 });

@@ -261,6 +261,13 @@ export function producesEvidence(cmd, depth = 0) {
     let i = 0;
     while (i < words.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i]) || GLUE.has(words[i]) || /^-/.test(words[i]) && GLUE.has(words[i - 1]))) i++;
     const w = (words[i] || '').replace(/^.*\//, '');
+    // CP-03 R2-L5: `ls` and `cat` read a source only when they are given one: a path argument that is
+    // not a device (`ls`, `cat /dev/null`, `cat < /dev/null` print nothing checkable).
+    if (w === 'ls' || w === 'cat') {
+      const args = words.slice(i + 1).filter((a, k, all) => !/^-/.test(a) && !/^[<>]/.test(a) && !/^[<>]/.test(all[k - 1] || ''));
+      if (args.some((a) => !/^\/dev\//.test(a))) return true;
+      continue;
+    }
     if (DATA_WORDS.has(w)) return true;
     if (SHELLS.has(w)) {
       const k = words.indexOf('-c', i);
