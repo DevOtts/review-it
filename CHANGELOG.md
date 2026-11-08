@@ -16,6 +16,16 @@ All notable changes to the `review-it` plugin.
   Without doc-it the audit prints `[skip] doc-it not installed: tier enum` and never reports that check
   as PASS (K2-03, D14).
 
+### Security (CP-03 adversarial review)
+- G-6 fails closed: a model id that does not reduce to a known family (`opusplan`, `best`) is refused
+  instead of being compared as a raw string; `--model-family` declares an unknown one (Q1-H1).
+- Evidence is verified, not only shaped: cited shas and paths are looked up with `git cat-file -e` in the
+  repos named by `--repos` or the ledger's `Repos:` header; `echo`/`printf`/`true`/`:` are not evidence (Q1-M1).
+- The chain state is bound to copies of every recorded file (`audit/.chain/`) by a digest sidecar, and
+  publish re-derives every verdict and ruling from them: `STATE_TAMPERED` (Q1-M2).
+- A ledger changed after `start` refuses with `LEDGER_CHANGED`; `start --restart` re-audits (Q1-M3).
+- Duplicate ids in a verdict or rulings file, and an unusable doc-it (`[skip] doc-it unusable`), refuse (Q1-L3, Q1-L4).
+
 ## [2.1.1] — 2026-10-18
 
 Patch release, from the first real run of the do-it harness.
