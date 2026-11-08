@@ -9,8 +9,9 @@
 // audit/chain-state.json, so any session can resume with `status`.
 //
 //   start <claims.md> --auditor-model M [--author-model A] [--ombudsman-model O] [--stakes decision|routine]
-//   record-audit <file> [--model M] [--tokens N] [--ledger <claims.md>]
-//   record-ombudsman <file> [--model O] [--tokens N] [--ledger <claims.md>]
+//         [--model-family <family> | <id>=<family>,...]
+//   record-audit <file> [--model M] [--tokens N] [--model-family ...] [--ledger <claims.md>]
+//   record-ombudsman <file> [--model O] [--tokens N] [--model-family ...] [--ledger <claims.md>]
 //   abort [--reason TEXT] [--ledger <claims.md>]
 //   status [--json] [--ledger <claims.md>]
 //
@@ -61,16 +62,79 @@ function writeAtomic(file, text) {
   renameSync(tmp, file);
 }
 
-// Model identity for G-6. A bare family alias ("opus") or a full id ("claude-opus-5-5") is reduced
-// to its family when one is recognisable, so two versions of one family count as the same model:
-// the auditor exists to be independent of the author, and a sibling version is not.
-export function modelKey(m) {
-  const s = String(m || '').trim().toLowerCase();
-  if (!s) return '';
-  const fam = FAMILIES.find((f) => new RegExp(`(^|[^a-z])${f}([^a-z]|$)`).test(s));
-  return fam || s.replace(/^claude-/, '');
+// Model identity for G-6 (CP-03 Q1-H1: fail closed). Every model id is reduced to a FAMILY, so two
+// versions of one family count as the same model: the auditor exists to be independent of the author,
+// and a sibling version is not. An id that does not reduce to exactly one known family is REFUSED,
+// never compared as a raw string (a raw-string compare let `opusplan` pass as "not opus").
+// Normalisation: lower case; drop a context-size tag (`[1m]`, `-1m`); drop provider prefixes
+// (`us.anthropic.`, `anthropic/`, `claude-`, `claude`); split on separators and letter/digit
+// boundaries; the first word must be a family or a known alias, every other word a version number,
+// date, provider tag or tier word. Anything else is unknown → declare it with --model-family.
+// Host pointers (`default`, `best`, `inherit`) name no model at all and are refused outright.
+export const MODEL_FAMILIES = {
+  families: FAMILIES,
+  aliases: { opusplan: 'opus', claudeopus: 'opus', claudesonnet: 'sonnet', claudehaiku: 'haiku', claudefable: 'fable', chatgpt: 'gpt' },
+  pointers: ['default', 'best', 'inherit', 'auto', 'any', 'same', 'current', 'main'],
+  // words allowed after the family word (versions and dates are digits and pass on their own)
+  tiers: ['latest', 'preview', 'exp', 'experimental', 'thinking', 'mini', 'nano', 'pro', 'flash', 'lite', 'turbo', 'instruct', 'chat',
+    'high', 'low', 'medium', 'large', 'small', 'max', 'r', 'fast', 'plan', 'codex', 'coder', 'v', 'k', 'm', 'b', 'context', 'beta', 'stable', 'ultra', 'plus'],
+  prefixes: ['us', 'eu', 'apac', 'global', 'anthropic', 'claude', 'bedrock', 'vertex', 'models', 'openai', 'google', 'meta', 'x', 'ai', 'xai'],
+};
+function familyWords(m) {
+  let s = String(m || '').trim().toLowerCase();
+  s = s.replace(/\[[^\]]*\]/g, ' ').replace(/^(?:[a-z]+[./])*(?:anthropic|openai|google|meta|xai)[./:]/, ' ').replace(/^claude(?=[a-z])/, '');
+  return s.split(/[^a-z0-9]+|(?<=[a-z])(?=[0-9])|(?<=[0-9])(?=[a-z])/).filter(Boolean);
 }
-export const sameModel = (a, b) => modelKey(a) !== '' && modelKey(a) === modelKey(b);
+// → { family } or { error }. `declared` maps a model id (as typed) to a family name.
+export function resolveFamily(m, declared = {}) {
+  const id = String(m || '').trim();
+  if (!id) return { error: 'empty model id' };
+  const words = familyWords(id);
+  if (words.length === 1 && MODEL_FAMILIES.pointers.includes(words[0]))
+    return { error: `model id "${id}" is a host pointer, not a model; pass the concrete model id (G-6 cannot be checked against "${id}")` };
+  let i = 0;
+  while (i < words.length && (MODEL_FAMILIES.prefixes.includes(words[i]) || /^\d+$/.test(words[i]))) i++; // claude-3-5-sonnet
+  const head = words[i];
+  const fam = head && (FAMILIES.includes(head) ? head : MODEL_FAMILIES.aliases[head]);
+  const tailOk = words.slice(i + 1).every((w) => /^\d+$/.test(w) || MODEL_FAMILIES.tiers.includes(w));
+  const known = fam && tailOk ? fam : null;
+  const decl = declared[id] ?? declared[id.toLowerCase()];
+  if (decl !== undefined) {
+    const d = String(decl).trim().toLowerCase();
+    if (!FAMILIES.includes(d)) return { error: `--model-family ${id}=${decl}: "${decl}" is not a known family (${FAMILIES.join(', ')})` };
+    if (known && known !== d) return { error: `--model-family ${id}=${decl} contradicts the known family of ${id} (${known}); refused` };
+    return { family: d };
+  }
+  if (known) return { family: known };
+  return { error: `unknown model family: ${id}; declare it with --model-family <family> (or --model-family ${id}=<family>), one of ${FAMILIES.join(', ')}` };
+}
+// Lenient key for display and back-compat callers: the family, or '' when it cannot be resolved.
+export function modelKey(m, declared) { return resolveFamily(m, declared).family || ''; }
+// Fail closed: an unresolvable id never compares as "different".
+export function familyOf(m, declared, role) {
+  const r = resolveFamily(m, declared);
+  if (r.error) throw new Refusal(`G-6: ${role ? `${role} ` : ''}${r.error}`);
+  return r.family;
+}
+export const sameModel = (a, b, declared) => familyOf(a, declared) === familyOf(b, declared);
+// The families declared at start, plus any --model-family on this command (for the file's model id).
+function chainFamilies(st, opt, declared) {
+  const fams = { ...(st.model_families || {}) };
+  const unknown = resolveFamily(declared, fams).error && !MODEL_FAMILIES.pointers.includes(String(declared).trim().toLowerCase()) ? [declared] : [];
+  return { ...fams, ...parseFamilyFlag(opt['model-family'], unknown) };
+}
+// --model-family: `fam` (applies to the one unknown model of this command) or `id=fam[,id=fam...]`.
+function parseFamilyFlag(v, unknownIds) {
+  if (v === undefined) return {};
+  const out = {};
+  for (const part of String(v).split(',').map((x) => x.trim()).filter(Boolean)) {
+    const eq = part.lastIndexOf('=');
+    if (eq > 0) { out[part.slice(0, eq).trim()] = part.slice(eq + 1).trim(); continue; }
+    if (unknownIds.length !== 1) throw new Refusal(`--model-family ${part}: ${unknownIds.length ? `${unknownIds.length} models are unknown (${unknownIds.join(', ')})` : 'no model in this command is unknown'}; use --model-family <id>=<family>`, 2);
+    out[unknownIds[0]] = part;
+  }
+  return out;
+}
 export const modelSlug = (m) => String(m).trim().toLowerCase().replace(/[^a-z0-9.-]+/g, '-').replace(/^-+|-+$/g, '');
 
 // ---------- sibling lookups (X10 for doc-it; the same rule for plan-it) ----------
@@ -324,15 +388,22 @@ function cmdStart(pos, opt, out, log) {
   const dup = rows.map((r) => r.id).filter((id, i, a) => a.indexOf(id) !== i);
   if (dup.length) throw new Refusal(`${ledgerArg}: duplicate row id(s) ${[...new Set(dup)].join(', ')}`);
 
-  if (author && opt['author-model'] && modelKey(author) !== modelKey(opt['author-model']))
-    throw new Refusal(`author model conflict: ledger header says ${author}, --author-model says ${opt['author-model']}`);
   const authorModel = opt['author-model'] || author;
   if (!authorModel) throw new Refusal('author model unknown: add "Author model: <model>" to the ledger header or pass --author-model (G-6 cannot be checked without it)');
   const auditorModel = opt['auditor-model'];
   if (!auditorModel) throw new Refusal('--auditor-model is required (the auditor must be a different model from the author, G-6)', 2);
-  if (sameModel(authorModel, auditorModel))
-    throw new Refusal(`G-6: auditor model ${auditorModel} is the author's model (${authorModel}); refused before dispatch, nothing written`);
   const ombudsmanModel = opt['ombudsman-model'] || 'opus';
+  // Q1-H1: every model of the chain must resolve to a known family, or be declared; fail closed.
+  const models = [...new Set([author, opt['author-model'], auditorModel, ombudsmanModel].filter(Boolean))];
+  const families = parseFamilyFlag(opt['model-family'], models.filter((m) => resolveFamily(m).error && !MODEL_FAMILIES.pointers.includes(String(m).trim().toLowerCase())));
+  const fam = {};
+  for (const [m, role] of [[author, 'ledger author'], [opt['author-model'], 'author'], [auditorModel, 'auditor'], [ombudsmanModel, 'ombudsman']]) {
+    if (m) fam[role] = familyOf(m, families, `${role} model:`);
+  }
+  if (author && opt['author-model'] && fam['ledger author'] !== fam.author)
+    throw new Refusal(`author model conflict: ledger header says ${author}, --author-model says ${opt['author-model']}`);
+  if (fam.auditor === (fam.author || fam['ledger author']))
+    throw new Refusal(`G-6: auditor model ${auditorModel} is the author's model (${authorModel}; family ${fam.auditor}); refused before dispatch, nothing written`);
 
   const sf = statePath(ledger);
   let prev = null;
@@ -348,6 +419,7 @@ function cmdStart(pos, opt, out, log) {
   const st = {
     schema: SCHEMA, ledger, ledger_sha256: sha256(text), stakes,
     author_model: authorModel, auditor_model: auditorModel, ombudsman_model: ombudsmanModel,
+    model_families: families, families: { author: fam.author || fam['ledger author'], auditor: fam.auditor, ombudsman: fam.ombudsman },
     tier_check: tiers.check,
     rows: rows.map(({ id, claim, tier, source, tier_ids }) => ({ id, claim, tier, source, tier_ids: tier_ids || null })),
     state: 'LEDGER_READY',
@@ -376,8 +448,10 @@ function cmdRecordAudit(pos, opt, out, log) {
   if (text) {
     const declared = opt.model || parsed.model;
     if (!declared) throw new Refusal(`${pos[0]}: no "model:" line and no --model; cannot tell who wrote the verdicts`);
-    if (sameModel(declared, st.author_model)) throw new Refusal(`G-6: verdict file is from ${declared}, the author's model (${st.author_model}); not recorded`);
-    if (!sameModel(declared, st.auditor_model)) throw new Refusal(`verdict file is from ${declared}, but the dispatched auditor is ${st.auditor_model}`);
+    const fams = chainFamilies(st, opt, declared);
+    const f = familyOf(declared, fams, 'verdict file model:');
+    if (f === familyOf(st.author_model, fams)) throw new Refusal(`G-6: verdict file is from ${declared}, the author's model (${st.author_model}); not recorded`);
+    if (f !== familyOf(st.auditor_model, fams)) throw new Refusal(`verdict file is from ${declared}, but the dispatched auditor is ${st.auditor_model}`);
   }
   st.tokens.auditor.push(text ? tokensOf(opt, parsed) : null);
   st.audit.files.push({ file: vf, at: now(), present: !!text });
@@ -452,7 +526,8 @@ function cmdRecordOmbudsman(pos, opt, out, log) {
   const parsed = parseOmbudsmanFile(readFileSync(of, 'utf8'));
   const declared = opt.model || parsed.model;
   if (!declared) throw new Refusal(`${pos[0]}: no "model:" line and no --model`);
-  if (!sameModel(declared, st.ombudsman_model)) throw new Refusal(`rulings are from ${declared}, but the ombudsman is ${st.ombudsman_model} (D6)`);
+  const fams = chainFamilies(st, opt, declared);
+  if (familyOf(declared, fams, 'rulings file model:') !== familyOf(st.ombudsman_model, fams)) throw new Refusal(`rulings are from ${declared}, but the ombudsman is ${st.ombudsman_model} (D6)`);
   const byId = new Map(parsed.rows.map((r) => [r.id, r]));
   const bad = st.ombudsman.requested.filter((id) => { const r = byId.get(id); return !r || !r.ruling; });
   if (bad.length) throw new Refusal(`rulings missing or unreadable for ${bad.join(', ')} (ruling must be UPHELD or ${VERDICTS.join('|')}); state stays ADJUDICATING, re-dispatch the ombudsman`);
