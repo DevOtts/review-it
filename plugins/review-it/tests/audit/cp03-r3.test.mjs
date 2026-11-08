@@ -138,3 +138,44 @@ test('R3-Q1-M6 (d) a legit restart, abort and re-publish stay clean (no false PU
   writeFileSync(join(ws.dir, 'audit/audit-sonnet.md'), 'forged\n');
   assert.equal(run(['status', '--ledger', ledger], { home: ws.home }).status, 1, 'a carried-over file is still bound');
 });
+
+// R3-L4: with a declaration, lookalike ids used to be accepted against an opus author.
+const LOOKALIKES = ['o-p-u-s', 'οpus' /* Greek omicron */, 'ｏｐｕｓ' /* fullwidth */, 'claude-0pus-5-5', 'claude-opu5-5-5', 'o pus', 'оpus' /* Cyrillic o */, 'ΟPUS' /* Greek capital omicron */];
+test('R3-L4 lookalike model ids fold to the family they imitate: a declaration cannot relabel them, G-6 refuses them', () => {
+  for (const id of LOOKALIKES) {
+    const ws = workspace('chain');
+    const ledger = opusLedger(ws);
+    for (const fam of ['sonnet', 'gemini']) {
+      const r = run(['start', ledger, '--auditor-model', id, '--model-family', `${id}=${fam}`, ...REPOS], { home: ws.home });
+      assert.equal(r.status, 1, `${id} declared ${fam}: ${r.stderr}`);
+      assert.match(r.stderr, /refused: G-6: auditor model: --model-family .* contradicts the known family of .* \(opus\); refused/, `${id}=${fam}`);
+      assert.ok(!exists(ws, 'audit'), `${id}: nothing written`);
+    }
+    const plain = run(['start', ledger, '--auditor-model', id, ...REPOS], { home: ws.home });
+    assert.equal(plain.status, 1, id);
+    assert.match(plain.stderr, /refused: G-6: /, id);
+    const asOpus = run(['start', ledger, '--auditor-model', id, '--model-family', `${id}=opus`, ...REPOS], { home: ws.home });
+    assert.equal(asOpus.status, 1, id);
+    assert.match(asOpus.stderr, /G-6: auditor model .* is the author's model/, id);
+    assert.ok(!exists(ws, 'audit'), `${id}: nothing written`);
+  }
+});
+
+test('R3-L4 (b) an id that still holds non-ASCII after NFKC and the lookalike fold is refused, even when declared', () => {
+  for (const id of ['opüs', 'օpus' /* Armenian */, 'opus‍', 'son­net', 'gemıní']) {
+    const ws = workspace('chain');
+    const ledger = opusLedger(ws);
+    const r = run(['start', ledger, '--auditor-model', id, '--model-family', `${id}=sonnet`, ...REPOS], { home: ws.home });
+    assert.equal(r.status, 1, JSON.stringify(id));
+    assert.match(r.stderr, /contains non-ASCII or control characters \(U\+[0-9A-F]{4}/, JSON.stringify(id));
+    assert.ok(!exists(ws, 'audit'));
+  }
+  // the author side resolves through the same rule
+  const ws = workspace('chain');
+  const ledger = opusLedger(ws);
+  const r = run(['start', ledger, '--author-model', 'οpus', '--auditor-model', 'claude-sonnet-5-5', ...REPOS], { home: ws.home });
+  assert.equal(r.status, 0, 'Greek-omicron author folds to opus, matching the ledger header: ' + r.stderr);
+  const r2 = run(['start', ledger, '--restart', '--author-model', 'οpus', '--auditor-model', 'ｏｐｕｓ', ...REPOS], { home: ws.home });
+  assert.equal(r2.status, 1);
+  assert.match(r2.stderr, /G-6: auditor model ｏｐｕｓ is the author's model/);
+});

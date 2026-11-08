@@ -36,6 +36,9 @@ All notable changes to the `review-it` plugin.
   `audit/.quarantine/<timestamp>/` first. `status` exits 1 with `PUBLISHED_UNBOUND`, also when the state is
   missing or fails its digest. A forged SAFE.md can no longer survive a restart from a tampered or deleted
   state (R3-Q1-M6).
+- Lookalike model ids are folded before family matching (NFKC, confusable Greek/Cyrillic letters to Latin,
+  0→o, 1→l, 5→s inside a word, separated letters read joined up), so `οpus`, `ｏｐｕｓ`, `claude-0pus-5-5`,
+  `o-p-u-s` are `opus` and cannot be declared another family; an id still holding non-ASCII is refused (R3-L4).
 
 ## [2.1.1] — 2026-10-18
 

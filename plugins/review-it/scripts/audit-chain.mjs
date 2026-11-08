@@ -86,8 +86,28 @@ export const MODEL_FAMILIES = {
     'high', 'low', 'medium', 'large', 'small', 'max', 'r', 'fast', 'plan', 'codex', 'coder', 'v', 'k', 'm', 'b', 'context', 'beta', 'stable', 'ultra', 'plus'],
   prefixes: ['us', 'eu', 'apac', 'global', 'anthropic', 'claude', 'bedrock', 'vertex', 'models', 'openai', 'google', 'meta', 'x', 'ai', 'xai'],
 };
+// CP-03 R3-L4: lookalike ids. Before any family matching the id is NFKC-normalised (fullwidth `ｏｐｕｓ` →
+// `opus`), lower-cased, and confusable Greek / Cyrillic letters are folded to the Latin letter they imitate
+// (Greek `οpus` → `opus`). An id that still holds a non-ASCII character after that is refused. Separately,
+// digits that sit inside a word (`0pus`, `opu5`) are read as the letters they imitate (0→o, 1→l, 5→s), and
+// the letters of the whole id are read joined up (`o-p-u-s`, `o pus`): a family found either way FIXES the
+// family (it can never be declared as another one), even though the id is not a known spelling of it.
+const CONFUSABLES = {
+  // Greek
+  'α': 'a', 'β': 'b', 'γ': 'y', 'ε': 'e', 'ζ': 'z', 'η': 'n', 'ι': 'i', 'κ': 'k', 'μ': 'u', 'ν': 'v', 'ο': 'o', 'ρ': 'p', 'ς': 's',
+  'τ': 't', 'υ': 'u', 'χ': 'x', 'ω': 'w', 'ϲ': 'c', 'ϳ': 'j', 'ά': 'a', 'έ': 'e', 'ί': 'i', 'ό': 'o', 'ύ': 'u',
+  // Cyrillic
+  'а': 'a', 'в': 'b', 'г': 'r', 'д': 'd', 'е': 'e', 'ё': 'e', 'з': '3', 'и': 'u', 'к': 'k', 'л': 'n', 'м': 'm', 'н': 'h', 'о': 'o', 'п': 'n',
+  'р': 'p', 'с': 'c', 'т': 't', 'у': 'y', 'х': 'x', 'ь': 'b', 'і': 'i', 'ї': 'i', 'ј': 'j', 'ѕ': 's', 'ԁ': 'd', 'ԛ': 'q', 'ԝ': 'w',
+  'һ': 'h', 'ӏ': 'l', 'ү': 'y', 'ɡ': 'g', 'ı': 'i', 'ȷ': 'j',
+};
+export function normalizeModelId(m) {
+  return [...String(m || '').normalize('NFKC').trim().toLowerCase()].map((c) => CONFUSABLES[c] ?? c).join('');
+}
+const DIGIT_LOOKALIKE = { 0: 'o', 1: 'l', 5: 's' };
+const foldDigits = (s) => s.replace(/[a-z0-9]+/g, (w) => (/[a-z]/.test(w) ? w.replace(/[015]/g, (d) => DIGIT_LOOKALIKE[d]) : w));
 function familyWords(m) {
-  let s = String(m || '').trim().toLowerCase();
+  let s = normalizeModelId(m);
   s = s.replace(/\[[^\]]*\]/g, ' ').replace(/^(?:[a-z]+[./])*(?:anthropic|openai|google|meta|xai)[./:]/, ' ').replace(/^claude(?=[a-z])/, '');
   return s.split(/[^a-z0-9]+|(?<=[a-z])(?=[0-9])|(?<=[0-9])(?=[a-z])/).filter(Boolean);
 }
@@ -95,6 +115,10 @@ function familyWords(m) {
 export function resolveFamily(m, declared = {}) {
   const id = String(m || '').trim();
   if (!id) return { error: 'empty model id' };
+  const norm = normalizeModelId(id);
+  const nonAscii = [...norm].filter((c) => c.charCodeAt(0) > 0x7e || c.charCodeAt(0) < 0x20);
+  if (nonAscii.length)
+    return { error: `model id "${id}" contains non-ASCII or control characters (${[...new Set(nonAscii)].map((c) => `U+${c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`).join(', ')}) after NFKC and lookalike folding; refused, a lookalike id is never matched or declared` };
   const words = familyWords(id);
   if (words.length === 1 && MODEL_FAMILIES.pointers.includes(words[0]))
     return { error: `model id "${id}" is a host pointer, not a model; pass the concrete model id (G-6 cannot be checked against "${id}")` };
@@ -116,6 +140,13 @@ export function resolveFamily(m, declared = {}) {
     if (MODEL_FAMILIES.aliases[w]) { named.add(MODEL_FAMILIES.aliases[w]); return; }
     for (const f of FAMILIES) if (w.includes(f) && !(k !== i && f === 'codex')) named.add(f);
   });
+  // R3-L4: digit lookalikes inside a word, and the id's letters read joined up (prefixes, numbers and
+  // non-head tier words left out, so `gpt-5-codex` stays one family).
+  const looks = familyWords(foldDigits(normalizeModelId(id)));
+  let lh = 0;
+  while (lh < looks.length && (MODEL_FAMILIES.prefixes.includes(looks[lh]) || /^\d+$/.test(looks[lh]))) lh++;
+  const joined = looks.filter((w, k) => !(MODEL_FAMILIES.prefixes.includes(w) || /^\d+$/.test(w) || (k !== lh && MODEL_FAMILIES.tiers.includes(w)))).join('');
+  for (const f of FAMILIES) if (joined.includes(f)) named.add(f);
   if (named.size > 1) return { error: `model id "${id}" names more than one family (${[...named].join(', ')}); refused, G-6 cannot tell which model it is` };
   const fixed = named.size ? [...named][0] : null;
   const decl = declared[id] ?? declared[id.toLowerCase()];
@@ -157,7 +188,7 @@ function parseFamilyFlag(v, unknownIds) {
   }
   return out;
 }
-export const modelSlug = (m) => String(m).trim().toLowerCase().replace(/[^a-z0-9.-]+/g, '-').replace(/^-+|-+$/g, '');
+export const modelSlug = (m) => normalizeModelId(m).replace(/[^a-z0-9.-]+/g, '-').replace(/^-+|-+$/g, '');
 
 // ---------- sibling lookups (X10 for doc-it; the same rule for plan-it) ----------
 function semverCmp(a, b) {
