@@ -3,10 +3,10 @@
 // CP-03-adversarial.md §3). Each case replays the reviewer's attack and asserts a refusal.
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { workspace, run, state, exists, read, cleanup, REPOS, REPO } from './helpers.mjs';
-import { resolveFamily, verifyEvidence, producesEvidence } from '../../scripts/audit-chain.mjs';
+import { resolveFamily, verifyEvidence, producesEvidence, chainDigest } from '../../scripts/audit-chain.mjs';
 
 after(cleanup);
 
@@ -123,4 +123,84 @@ test('Q1-M1 (c) the ledger header `Repos:` names the repos, relative to the ledg
   const a = run(['record-audit', join(ws.dir, 'audit-full.md'), '--ledger', ledger], { home: ws.home });
   assert.equal(a.status, 0, a.stderr);
   assert.equal(a.dispatches[0].role, 'ombudsman');
+});
+
+// Hand-edit chain-state.json; with rehash the forger also recomputes the digest sidecar (the code is public).
+function forge(ws, edit, { rehash = false } = {}) {
+  const f = join(ws.dir, 'audit', 'chain-state.json');
+  const st = JSON.parse(readFileSync(f, 'utf8'));
+  edit(st);
+  const text = JSON.stringify(st, null, 2) + '\n';
+  writeFileSync(f, text);
+  if (rehash) writeFileSync(join(ws.dir, 'audit', 'chain-state.sha256'), chainDigest(text, st) + '\n');
+}
+const twoRowAttack = (ws) => { const ledger = opusLedger(ws); assert.equal(run(['start', ledger, '--auditor-model', 'sonnet', ...REPOS], { home: ws.home }).status, 0); return ledger; };
+const forgedAdjudicating = (st) => {
+  st.state = 'ADJUDICATING';
+  st.audit.verdicts = { C1: { verdict: 'TRUE', evidence: 'forged' }, C2: { verdict: 'TRUE', evidence: 'forged' } };
+  st.ombudsman.requested = [];
+};
+
+test('Q1-M2 hand-forged chain-state (ADJUDICATING, forged verdicts, nothing requested) is refused with STATE_TAMPERED', () => {
+  const ws = workspace('chain');
+  const ledger = twoRowAttack(ws);
+  forge(ws, forgedAdjudicating);
+  writeFileSync(join(ws.dir, 'hdr.md'), '# o\n\nmodel: opus\n');
+  const r = run(['record-ombudsman', join(ws.dir, 'hdr.md'), '--ledger', ledger], { home: ws.home });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /STATE_TAMPERED/);
+  assert.ok(!exists(ws, 'audit/SAFE.md'));
+  // status and abort see it too; `start --restart` is the way out.
+  assert.match(run(['status', '--ledger', ledger], { home: ws.home }).stderr, /STATE_TAMPERED/);
+  assert.match(run(['abort', '--ledger', ledger], { home: ws.home }).stderr, /STATE_TAMPERED/);
+  const rs = run(['start', ledger, '--auditor-model', 'sonnet', '--restart', ...REPOS], { home: ws.home });
+  assert.equal(rs.status, 0, rs.stderr);
+  assert.equal(state(ws).state, 'AUDITING');
+});
+
+test('Q1-M2 (b) a forger who also recomputes the digest still cannot publish: verdicts are re-derived from recorded files', () => {
+  const ws = workspace('chain');
+  const ledger = twoRowAttack(ws);
+  forge(ws, forgedAdjudicating, { rehash: true });
+  // The reviewer's header-only rulings file is refused for having no rows.
+  writeFileSync(join(ws.dir, 'hdr.md'), '# o\n\nmodel: opus\n');
+  const h = run(['record-ombudsman', join(ws.dir, 'hdr.md'), '--ledger', ledger], { home: ws.home });
+  assert.equal(h.status, 1);
+  assert.match(h.stderr, /no ruling rows/);
+  // With rows and a forged request list, publish re-derives and finds no recorded audit.
+  forge(ws, (st) => { st.ombudsman.requested = ['C1', 'C2']; }, { rehash: true });
+  writeFileSync(join(ws.dir, 'o.md'), rulings([['C1', 'UPHELD'], ['C2', 'UPHELD']]));
+  const o = run(['record-ombudsman', join(ws.dir, 'o.md'), '--ledger', ledger], { home: ws.home });
+  assert.equal(o.status, 1, o.stderr);
+  assert.match(o.stderr, /STATE_TAMPERED: no recorded auditor file/);
+  assert.ok(!exists(ws, 'audit/SAFE.md'), 'no SAFE.md');
+  assert.equal(state(ws).state, 'ADJUDICATING', 'state unchanged on refusal');
+});
+
+test('Q1-M2 (c) dropping a row from the state, or editing a recorded file, is refused at publish', () => {
+  const ws = workspace('chain');
+  const ledger = twoRowAttack(ws);
+  writeFileSync(join(ws.dir, 'v.md'), verdicts([['C1', 'TRUE', 'review-it@eed4dec:LICENSE:1'], ['C2', 'TRUE', '`git show eed4dec:LICENSE`']]));
+  assert.equal(run(['record-audit', join(ws.dir, 'v.md'), '--ledger', ledger], { home: ws.home }).status, 0);
+  writeFileSync(join(ws.dir, 'o.md'), rulings([['C1', 'UPHELD'], ['C2', 'UPHELD']]));
+  // variant: drop C2 from rows + requested, digest recomputed
+  forge(ws, (st) => { st.rows = st.rows.filter((r) => r.id !== 'C2'); st.ombudsman.requested = ['C1']; delete st.audit.verdicts.C2; }, { rehash: true });
+  const d = run(['record-ombudsman', join(ws.dir, 'o.md'), '--ledger', ledger], { home: ws.home });
+  assert.equal(d.status, 1);
+  assert.match(d.stderr, /STATE_TAMPERED: the state's rows are not the ledger's rows/);
+  assert.ok(!exists(ws, 'audit/SAFE.md'));
+
+  const ws2 = workspace('chain');
+  const l2 = twoRowAttack(ws2);
+  writeFileSync(join(ws2.dir, 'v.md'), verdicts([['C1', 'FALSE', 'review-it@eed4dec:LICENSE:1'], ['C2', 'TRUE', '`git show eed4dec:LICENSE`']]));
+  assert.equal(run(['record-audit', join(ws2.dir, 'v.md'), '--ledger', l2], { home: ws2.home }).status, 0);
+  // flip the recorded copy AND the state to TRUE, re-hash the state: the record's own hash catches it
+  const rec = join(ws2.dir, 'audit', '.chain', 'auditor-1.md');
+  writeFileSync(rec, readFileSync(rec, 'utf8').replace('| C1 | FALSE |', '| C1 | TRUE |'));
+  forge(ws2, (st) => { st.audit.verdicts.C1.verdict = 'TRUE'; }, { rehash: true });
+  writeFileSync(join(ws2.dir, 'o.md'), rulings([['C1', 'UPHELD'], ['C2', 'UPHELD']]));
+  const t = run(['record-ombudsman', join(ws2.dir, 'o.md'), '--ledger', l2], { home: ws2.home });
+  assert.equal(t.status, 1);
+  assert.match(t.stderr, /STATE_TAMPERED: recorded file .chain\/auditor-1.md changed after it was recorded/);
+  assert.ok(!exists(ws2, 'audit/SAFE.md'));
 });

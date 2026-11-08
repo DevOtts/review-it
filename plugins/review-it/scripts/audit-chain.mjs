@@ -9,7 +9,7 @@
 // audit/chain-state.json, so any session can resume with `status`.
 //
 //   start <claims.md> --auditor-model M [--author-model A] [--ombudsman-model O] [--stakes decision|routine]
-//         [--repos name=path,...] [--model-family <family> | <id>=<family>,...]
+//         [--restart] [--repos name=path,...] [--model-family <family> | <id>=<family>,...]
 //   record-audit <file> [--model M] [--tokens N] [--repos ...] [--model-family ...] [--ledger <claims.md>]
 //   record-ombudsman <file> [--model O] [--tokens N] [--model-family ...] [--ledger <claims.md>]
 //   abort [--reason TEXT] [--ledger <claims.md>]
@@ -25,7 +25,7 @@ import { homedir } from 'node:os';
 import { join, dirname, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const SCHEMA = 'review-it/audit-chain/1';
+export const SCHEMA = 'review-it/audit-chain/2'; // 2: records + digest sidecar (CP-03 Q1-M2)
 export const VERDICTS = ['TRUE', 'FALSE', 'PARTIAL', 'UNVERIFIABLE'];
 // Diagram names of CONTRACT §3.2 are canonical; the table spells two of them differently.
 export const STATE_ALIASES = { AUDIT_RETRY: 'AUDIT_RETRY_FAILED', REAUDIT_SAMPLE: 'PARTIAL_TRUST' };
@@ -52,7 +52,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a.startsWith('--')) {
       const k = a.slice(2);
-      if (k === 'json') { opt.json = true; continue; }
+      if (k === 'json' || k === 'restart') { opt[k] = true; continue; }
       const v = argv[i + 1];
       if (v === undefined || v.startsWith('--')) throw new Refusal(`--${k} needs a value`, 2);
       opt[k] = v; i++;
@@ -347,14 +347,92 @@ function resolveTiers(rows, log) {
 // ---------- state ----------
 const statePath = (ledger) => join(dirname(ledger), 'audit', 'chain-state.json');
 const auditDir = (st) => join(dirname(st.ledger), 'audit');
-function loadState(opt) {
+// Integrity (CP-03 Q1-M2). The state is bound three ways:
+//  1. every recorded verdict / rulings file is copied to audit/.chain/<role>-<n>.md and its sha256 kept
+//     in st.records;
+//  2. a sidecar audit/chain-state.sha256 holds a digest over the state text, the ledger sha256 and the
+//     record hashes; every command re-checks it;
+//  3. before publishing, verifyChain() re-derives every verdict and ruling from the record copies and the
+//     ledger, and refuses unless they equal the state's (so a re-hashed forgery still fails).
+// Any mismatch refuses with STATE_TAMPERED; the way out is `start <ledger> --restart`.
+const digestPath = (f) => join(dirname(f), 'chain-state.sha256');
+export const chainDigest = (text, st) => sha256(`${SCHEMA}\n${text}\n${st.ledger_sha256}\n${(st.records || []).map((r) => r.sha256 || '-').join('\n')}`);
+const tampered = (msg) => new Refusal(`STATE_TAMPERED: ${msg}; nothing recorded or published. Restart the chain with \`start <claims.md> --restart\``);
+function loadState(opt, { check = true } = {}) {
   const f = opt.ledger ? statePath(resolve(opt.ledger)) : resolve('audit/chain-state.json');
   if (!existsSync(f)) throw new Refusal(`no audit chain state at ${f} (run start first, or pass --ledger)`, 2);
-  let st; try { st = JSON.parse(readFileSync(f, 'utf8')); } catch (e) { throw new Refusal(`chain state unreadable: ${f}: ${e.message}`, 2); }
-  if (st.schema !== SCHEMA) throw new Refusal(`chain state ${f} has schema ${st.schema}, expected ${SCHEMA}`, 2);
+  let text, st; try { text = readFileSync(f, 'utf8'); st = JSON.parse(text); } catch (e) { throw new Refusal(`chain state unreadable: ${f}: ${e.message}`, 2); }
+  if (st.schema !== SCHEMA) throw new Refusal(`chain state ${f} has schema ${st.schema}, expected ${SCHEMA}; run \`start <claims.md> --restart\``, 2);
+  if (check) {
+    const d = existsSync(digestPath(f)) ? readFileSync(digestPath(f), 'utf8').trim() : null;
+    if (!d) throw tampered(`${digestPath(f)} is missing`);
+    if (d !== chainDigest(text, st)) throw tampered(`${f} does not match its digest (edited by hand?)`);
+  }
   return { st, file: f };
 }
-const saveState = (file, st) => writeAtomic(file, JSON.stringify(st, null, 2) + '\n');
+function saveState(file, st) {
+  const text = JSON.stringify(st, null, 2) + '\n';
+  writeAtomic(file, text);
+  writeAtomic(digestPath(file), chainDigest(text, st) + '\n');
+}
+// Copy a recorded file into the chain's own record set; return its record entry.
+function keepRecord(st, role, text, src, requested, model) {
+  const n = st.records.filter((r) => r.role === role).length + 1;
+  const rel = join('.chain', `${role}-${n}.md`);
+  writeAtomic(join(auditDir(st), rel), text);
+  const rec = { role, n, file: rel, source: src, sha256: sha256(text), requested: [...requested], model, at: now() };
+  st.records.push(rec);
+  return rec;
+}
+// Re-derive the chain from the ledger and the record copies; refuse unless the state agrees.
+function verifyChain(st) {
+  const lt = existsSync(st.ledger) ? readFileSync(st.ledger, 'utf8') : null;
+  if (lt === null || sha256(lt) !== st.ledger_sha256) throw new Refusal(`LEDGER_CHANGED: ${st.ledger} changed since start; run \`start <claims.md> --restart\``);
+  const rows = parseLedger(lt).rows;
+  const same = rows.length === st.rows.length && rows.every((r, i) => ['id', 'claim', 'tier', 'source'].every((k) => r[k] === st.rows[i][k]));
+  if (!same) throw tampered('the state\'s rows are not the ledger\'s rows');
+  const ids = new Set(rows.map((r) => r.id));
+  const fams = st.model_families || {};
+  const verdicts = {}, rulings = {};
+  let nA = 0, nO = 0;
+  for (const rec of st.records || []) {
+    if (!rec.sha256) { if (rec.role === 'auditor') continue; throw tampered(`record ${rec.file || '?'} has no hash`); }
+    const p = join(auditDir(st), rec.file || '');
+    if (!rec.file || !existsSync(p)) throw tampered(`recorded file ${rec.file} is missing`);
+    const text = readFileSync(p, 'utf8');
+    if (sha256(text) !== rec.sha256) throw tampered(`recorded file ${rec.file} changed after it was recorded`);
+    if (rec.role === 'auditor') {
+      nA++;
+      const parsed = parseAuditFile(text);
+      const m = rec.model || parsed.model;
+      if (familyOf(m, fams) === familyOf(st.author_model, fams) || familyOf(m, fams) !== familyOf(st.auditor_model, fams)) throw tampered(`${rec.file} is from ${m}, not the chain's auditor`);
+      const byId = new Map(parsed.rows.map((r) => [r.id, r]));
+      for (const id of rec.requested) {
+        const r = byId.get(id);
+        if (ids.has(id) && r && r.verdict && verifyEvidence(r.evidence, st.repos || {}).ok) verdicts[id] = { verdict: r.verdict, evidence: r.evidence };
+      }
+    } else if (rec.role === 'ombudsman') {
+      nO++;
+      const parsed = parseOmbudsmanFile(text);
+      const m = rec.model || parsed.model;
+      if (familyOf(m, fams) !== familyOf(st.ombudsman_model, fams)) throw tampered(`${rec.file} is from ${m}, not the chain's ombudsman`);
+      const byId = new Map(parsed.rows.map((r) => [r.id, r]));
+      for (const id of rec.requested) {
+        const r = byId.get(id);
+        if (!r || !r.ruling) throw tampered(`${rec.file} has no ruling for ${id}`);
+        rulings[id] = { ruling: r.ruling, final: r.ruling === 'UPHELD' ? (verdicts[id] || {}).verdict || null : r.ruling, reason: r.reason };
+      }
+    } else throw tampered(`record of unknown role ${rec.role}`);
+  }
+  if (!nA || !nO) throw tampered(`no recorded ${!nA ? 'auditor' : 'ombudsman'} file; a chain publishes only what it recorded itself`);
+  for (const r of rows) {
+    const v = verdicts[r.id], sv = st.audit.verdicts[r.id], ru = rulings[r.id], sr = st.rulings[r.id];
+    if (!v) throw tampered(`${r.id} has no verdict in any recorded auditor file`);
+    if (!sv || sv.verdict !== v.verdict || sv.evidence !== v.evidence) throw tampered(`${r.id}: the state's verdict is not the recorded one`);
+    if (!ru) throw tampered(`${r.id} has no ruling in any recorded ombudsman file`);
+    if (!sr || sr.ruling !== ru.ruling || sr.final !== ru.final || (sr.reason || '') !== (ru.reason || '')) throw tampered(`${r.id}: the state's ruling is not the recorded one`);
+  }
+}
 function move(st, to, event, extra = {}) {
   st.history.push({ from: st.state, to, event, at: now(), ...extra });
   st.state = to;
@@ -393,6 +471,7 @@ function mergedAuditMd(st, title) {
 }
 
 function publish(st, log) {
+  verifyChain(st);
   const dir = auditDir(st);
   const slug = modelSlug(st.auditor_model);
   const safe = [], dnp = [];
@@ -480,8 +559,9 @@ function cmdStart(pos, opt, out, log) {
   let prev = null;
   if (existsSync(sf)) {
     try { prev = JSON.parse(readFileSync(sf, 'utf8')); } catch { prev = null; }
-    if (prev && (IN_FLIGHT.has(prev.state) || prev.state === 'ESCALATED_TO_OWNER'))
-      throw new Refusal(`a chain is ${prev.state} for this ledger; finish it or run abort first`);
+    if (prev && !opt.restart && (IN_FLIGHT.has(prev.state) || prev.state === 'ESCALATED_TO_OWNER'))
+      throw new Refusal(`a chain is ${prev.state} for this ledger; finish it, run abort, or \`start <claims.md> --restart\``);
+    if (opt.restart) log(`restart: discarding the chain in state ${prev ? prev.state : '(unreadable)'}; published audit/ files are kept as they are`);
   }
 
   const tiers = resolveTiers(rows, log);
@@ -498,10 +578,10 @@ function cmdStart(pos, opt, out, log) {
     recheck: { classes: [], rows: [] },
     rulings: {}, ombudsman: { round: 0, files: [], requested: [] },
     tokens: { auditor: [], ombudsman: [] },
-    dispatches: [], pending: null, published: false,
-    history: [...((prev && prev.history) || []), { from: prev ? prev.state : null, to: 'LEDGER_READY', event: 'ledger read', at: now(), rows: rows.length }],
+    dispatches: [], pending: null, published: false, records: [],
+    history: [...((prev && Array.isArray(prev.history) && prev.history) || []), { from: prev ? prev.state : null, to: 'LEDGER_READY', event: opt.restart ? 'restart: ledger read' : 'ledger read', at: now(), rows: rows.length }],
   };
-  rmSync(join(dirname(sf), '.work'), { recursive: true, force: true });
+  for (const d of ['.work', '.chain']) rmSync(join(dirname(sf), d), { recursive: true, force: true });
   const req = dispatch(st, 'auditor', st.audit.requested, 'audit every row from primary sources');
   move(st, 'AUDITING', 'dispatch auditor');
   saveState(sf, st);
@@ -526,12 +606,15 @@ function cmdRecordAudit(pos, opt, out, log) {
   }
   st.tokens.auditor.push(text ? tokensOf(opt, parsed) : null);
   st.audit.files.push({ file: vf, at: now(), present: !!text });
+  if (opt.repos) st.repos = { ...(st.repos || {}), ...parseRepos(opt.repos, process.cwd()) };
+  if (text) keepRecord(st, 'auditor', text, vf, st.audit.requested, opt.model || null);
+  else st.records.push({ role: 'auditor', file: null, source: vf, sha256: null, requested: [...st.audit.requested], at: now() });
 
   const requested = st.audit.requested;
   const byId = new Map();
   for (const r of parsed.rows) if (!byId.has(r.id)) byId.set(r.id, r);
   const uncovered = [];
-  const repos = { ...(st.repos || {}), ...parseRepos(opt.repos, process.cwd()) };
+  const repos = st.repos || {};
   const checked = new Map();
   for (const id of requested) {
     const r = byId.get(id);
@@ -598,7 +681,10 @@ function cmdRecordOmbudsman(pos, opt, out, log) {
   if (st.state !== 'ADJUDICATING') throw new Refusal(`record-ombudsman is not valid in state ${st.state}`);
   const of = pos[0] ? resolve(pos[0]) : null;
   if (!of || !existsSync(of)) throw new Refusal(`rulings file not found: ${pos[0] || '(none)'}; state stays ADJUDICATING`);
-  const parsed = parseOmbudsmanFile(readFileSync(of, 'utf8'));
+  const otext = readFileSync(of, 'utf8');
+  const parsed = parseOmbudsmanFile(otext);
+  if (!parsed.rows.length) throw new Refusal(`${pos[0]}: no ruling rows (a table | ID | Ruling | Reason |); state stays ADJUDICATING`);
+  if (!st.ombudsman.requested.length) throw tampered('the ombudsman was asked to rule on no rows');
   const declared = opt.model || parsed.model;
   if (!declared) throw new Refusal(`${pos[0]}: no "model:" line and no --model`);
   const fams = chainFamilies(st, opt, declared);
@@ -609,6 +695,7 @@ function cmdRecordOmbudsman(pos, opt, out, log) {
   st.tokens.ombudsman.push(tokensOf(opt, parsed));
   st.ombudsman.round += 1;
   st.ombudsman.files.push({ file: of, at: now() });
+  keepRecord(st, 'ombudsman', otext, of, st.ombudsman.requested, opt.model || null);
 
   const overturned = [];
   for (const id of st.ombudsman.requested) {
@@ -657,7 +744,7 @@ function cmdAbort(pos, opt, out, log) {
   const from = st.state;
   move(st, 'ABORTED', 'owner abort', { reason: opt.reason || null });
   // ROLLBACK: nothing is republished; the work files go, the last published audit/ files stay as they were.
-  rmSync(join(auditDir(st), '.work'), { recursive: true, force: true });
+  for (const d of ['.work', '.chain']) rmSync(join(auditDir(st), d), { recursive: true, force: true });
   st.pending = null;
   st.aborted = { at: now(), from, reason: opt.reason || null };
   move(st, 'LEDGER_READY', 'rollback: keep last published version');
