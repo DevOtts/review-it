@@ -5,14 +5,14 @@ import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { writeFileSync } from 'node:fs';
-import { workspace, run, state, read, cleanup } from '../audit/helpers.mjs';
+import { workspace, run, state, read, cleanup, REPOS } from '../audit/helpers.mjs';
 
 after(cleanup);
 
 test('T-K2-03 review-it --audit without doc-it prints "[skip] doc-it not installed: tier enum" and no PASS for it', () => {
   const ws = workspace('tiers');
   // helpers.run passes only PATH and HOME: DOC_IT_CLI is unset and HOME has no plugin cache.
-  const s = run(['start', ws.ledger, '--auditor-model', 'claude-haiku-5-5'], { home: ws.home });
+  const s = run(['start', ws.ledger, '--auditor-model', 'claude-haiku-5-5', ...REPOS], { home: ws.home });
   assert.equal(s.status, 0, 'a missing doc-it does not fail the audit');
   assert.match(s.stderr, /^\[skip\] doc-it not installed: tier enum$/m);
   assert.equal(s.dispatches.length, 1, 'the chain still runs');
@@ -32,7 +32,7 @@ test('T-K2-03 review-it --audit without doc-it prints "[skip] doc-it not install
 
   // The published SAFE.md says the tier check was skipped, never that it passed.
   const audit = ['# a', '', 'model: claude-haiku-5-5', '', '| ID | Verdict | Evidence |', '|---|---|---|',
-    '| T1 | TRUE | review-it@eed4dec:x |', '| T2 | TRUE | `git log -1` |', '| T3 | TRUE | review-it@eed4dec:docs/usage.md |'].join('\n');
+    '| T1 | TRUE | review-it@eed4dec:LICENSE |', '| T2 | TRUE | `git log -1` |', '| T3 | TRUE | review-it@eed4dec:docs/usage.md |'].join('\n');
   const omb = ['# o', '', 'model: claude-opus-5-5', '', '| ID | Ruling |', '|---|---|', '| T1 | UPHELD |', '| T2 | UPHELD |', '| T3 | UPHELD |'].join('\n');
   writeFileSync(join(ws.dir, 'a.md'), audit);
   writeFileSync(join(ws.dir, 'o.md'), omb);
