@@ -249,3 +249,22 @@ test('Q1-M3 (b) status flags a published SAFE.md whose ledger has since changed'
   assert.equal(s.status, 1);
   assert.match(s.stderr, /LEDGER_CHANGED/);
 });
+
+test('Q1-L3 a verdict or rulings file with two rows for one id is refused, not first-wins', () => {
+  const ws = workspace('chain');
+  const ledger = twoRowAttack(ws);
+  writeFileSync(join(ws.dir, 'v.md'), verdicts([['C1', 'TRUE', 'review-it@eed4dec:LICENSE:1'], ['C1', 'FALSE', 'review-it@eed4dec:LICENSE:1'], ['C2', 'TRUE', '`git show eed4dec:LICENSE`']]));
+  const a = run(['record-audit', join(ws.dir, 'v.md'), '--ledger', ledger], { home: ws.home });
+  assert.equal(a.status, 1);
+  assert.match(a.stderr, /more than one verdict row for C1/);
+  assert.equal(state(ws).state, 'AUDITING');
+  assert.equal(state(ws).records.length, 0, 'nothing recorded');
+  writeFileSync(join(ws.dir, 'v.md'), verdicts([['C1', 'TRUE', 'review-it@eed4dec:LICENSE:1'], ['C2', 'TRUE', '`git show eed4dec:LICENSE`']]));
+  assert.equal(run(['record-audit', join(ws.dir, 'v.md'), '--ledger', ledger], { home: ws.home }).status, 0);
+  writeFileSync(join(ws.dir, 'o.md'), rulings([['C1', 'UPHELD'], ['C2', 'UPHELD'], ['C2', 'FALSE']]));
+  const o = run(['record-ombudsman', join(ws.dir, 'o.md'), '--ledger', ledger], { home: ws.home });
+  assert.equal(o.status, 1);
+  assert.match(o.stderr, /more than one ruling row for C2/);
+  assert.equal(state(ws).state, 'ADJUDICATING');
+});
+

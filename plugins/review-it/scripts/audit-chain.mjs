@@ -515,6 +515,11 @@ function publish(st, log) {
   log(`published audit/audit-${slug}.md, audit/ombudsman.md, audit/SAFE.md — SAFE ${safe.length}, DO-NOT-PUBLISH ${dnp.length}`);
 }
 
+// CP-03 Q1-L3: one row per id. Two rows for one id (C1 TRUE, then C1 FALSE) is refused, not first-wins.
+function refuseDuplicates(rows, name, what) {
+  const dup = [...new Set(rows.map((r) => r.id).filter((id, i, a) => a.indexOf(id) !== i))];
+  if (dup.length) throw new Refusal(`${name}: more than one ${what} row for ${dup.join(', ')}; not recorded, the file must give one ${what} per id`);
+}
 function tokensOf(opt, parsed) {
   const t = opt.tokens ?? parsed.tokens;
   if (t === undefined || t === null) return null;
@@ -616,6 +621,7 @@ function cmdRecordAudit(pos, opt, out, log) {
     if (f === familyOf(st.author_model, fams)) throw new Refusal(`G-6: verdict file is from ${declared}, the author's model (${st.author_model}); not recorded`);
     if (f !== familyOf(st.auditor_model, fams)) throw new Refusal(`verdict file is from ${declared}, but the dispatched auditor is ${st.auditor_model}`);
   }
+  refuseDuplicates(parsed.rows, pos[0], 'verdict');
   st.tokens.auditor.push(text ? tokensOf(opt, parsed) : null);
   st.audit.files.push({ file: vf, at: now(), present: !!text });
   if (opt.repos) st.repos = { ...(st.repos || {}), ...parseRepos(opt.repos, process.cwd()) };
@@ -697,6 +703,7 @@ function cmdRecordOmbudsman(pos, opt, out, log) {
   const otext = readFileSync(of, 'utf8');
   const parsed = parseOmbudsmanFile(otext);
   if (!parsed.rows.length) throw new Refusal(`${pos[0]}: no ruling rows (a table | ID | Ruling | Reason |); state stays ADJUDICATING`);
+  refuseDuplicates(parsed.rows, pos[0], 'ruling');
   if (!st.ombudsman.requested.length) throw tampered('the ombudsman was asked to rule on no rows');
   const declared = opt.model || parsed.model;
   if (!declared) throw new Refusal(`${pos[0]}: no "model:" line and no --model`);
