@@ -268,3 +268,19 @@ test('Q1-L3 a verdict or rulings file with two rows for one id is refused, not f
   assert.equal(state(ws).state, 'ADJUDICATING');
 });
 
+test('Q1-L4 a bogus DOC_IT_CLI prints [skip] doc-it unusable and refuses; it is never treated as not installed', () => {
+  const ws = workspace('tiers');
+  const bad = run(['start', join(ws.dir, 'claims-unknown-tier.md'), '--auditor-model', 'claude-haiku-5-5', ...REPOS], { home: ws.home, env: { DOC_IT_CLI: '/nonexistent/doc-it.mjs' } });
+  assert.equal(bad.status, 2);
+  assert.match(bad.stderr, /^\[skip\] doc-it unusable: DOC_IT_CLI=\/nonexistent\/doc-it.mjs does not exist/m);
+  assert.doesNotMatch(bad.stderr, /doc-it not installed/);
+  assert.equal(bad.dispatches.length, 0);
+  assert.ok(!exists(ws, 'audit'), 'nothing written');
+  // An existing file that is not doc-it is unusable too.
+  const fake = join(ws.dir, 'fake-doc-it.mjs');
+  writeFileSync(fake, 'process.exit(0);\n');
+  const f = run(['start', join(ws.dir, 'claims-unknown-tier.md'), '--auditor-model', 'claude-haiku-5-5', ...REPOS], { home: ws.home, env: { DOC_IT_CLI: fake } });
+  assert.equal(f.status, 2);
+  assert.match(f.stderr, /\[skip\] doc-it unusable: .*did not print a tier list/);
+  assert.ok(!exists(ws, 'audit'));
+});

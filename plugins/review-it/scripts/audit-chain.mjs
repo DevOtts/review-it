@@ -327,9 +327,23 @@ export function parseOmbudsmanFile(text) {
 }
 
 // ---------- tier check through doc-it (K2-02, X10, X13) ----------
+// CP-03 Q1-L4: a doc-it that is configured or installed but does not answer `tiers --json` is not
+// "missing": the tier check would silently not run. Print `[skip] doc-it unusable: …` and refuse (exit 2).
 function resolveTiers(rows, log) {
+  const env = process.env.DOC_IT_CLI;
+  if (env && !existsSync(env)) {
+    log(`[skip] doc-it unusable: DOC_IT_CLI=${env} does not exist; tier enum not checked`);
+    throw new Refusal(`doc-it unusable: DOC_IT_CLI=${env} does not exist; fix or unset DOC_IT_CLI (a configured doc-it is never treated as not installed)`, 2);
+  }
   const cli = findDocIt();
   if (!cli) { log('[skip] doc-it not installed: tier enum'); return { check: 'skipped', bad: [] }; }
+  const probe = spawnSync('node', [cli, 'tiers', '--json'], { encoding: 'utf8' });
+  let tiersOut = null; try { tiersOut = JSON.parse(probe.stdout); } catch { /* below */ }
+  if (probe.status !== 0 || !tiersOut || !Array.isArray(tiersOut.tiers) || !tiersOut.tiers.length) {
+    const why = `${cli}: \`tiers --json\` ${probe.status !== 0 ? `exit ${probe.status}${probe.stderr ? ` (${probe.stderr.trim().split('\n')[0]})` : ''}` : 'did not print a tier list'}`;
+    log(`[skip] doc-it unusable: ${why}; tier enum not checked`);
+    throw new Refusal(`doc-it unusable: ${why}; fix ${env ? 'DOC_IT_CLI' : 'the doc-it install'} (an unusable doc-it is never treated as not installed)`, 2);
+  }
   const bad = [];
   for (const r of rows) {
     if (!r.tier.trim()) { bad.push(`${r.id}: empty tier`); continue; }
