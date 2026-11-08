@@ -541,7 +541,11 @@ function publish(st, log) {
   writeAtomic(join(dir, 'ombudsman.md'), omb);
   writeAtomic(join(dir, 'SAFE.md'), safeMd); // written last: SAFE.md present = the set is complete
   rmSync(join(dir, '.work'), { recursive: true, force: true });
-  st.published = { at: now(), files: [`audit-${slug}.md`, 'ombudsman.md', 'SAFE.md'], safe: safe.map((x) => x.r.id), do_not_publish: dnp.map((x) => x.r.id) };
+  // CP-03 R2-Q1-M5: the hash of each published file is kept in the state (so the chain digest covers it);
+  // `status` re-hashes them and refuses with PUBLISHED_TAMPERED after a hand edit.
+  const files = { [`audit-${slug}.md`]: audit, 'ombudsman.md': omb, 'SAFE.md': safeMd };
+  st.published = { at: now(), files: Object.keys(files), sha256: Object.fromEntries(Object.entries(files).map(([f, t]) => [f, sha256(t)])),
+    safe: safe.map((x) => x.r.id), do_not_publish: dnp.map((x) => x.r.id) };
   log(`published audit/audit-${slug}.md, audit/ombudsman.md, audit/SAFE.md — SAFE ${safe.length}, DO-NOT-PUBLISH ${dnp.length}`);
 }
 
@@ -602,9 +606,14 @@ function cmdStart(pos, opt, out, log) {
     throw new Refusal(`G-6: auditor model ${auditorModel} is the author's model (${authorModel}; family ${fam.auditor}); refused before dispatch, nothing written`);
 
   const sf = statePath(ledger);
-  let prev = null;
+  let prev = null, keptPublished = null;
   if (existsSync(sf)) {
-    try { prev = JSON.parse(readFileSync(sf, 'utf8')); } catch { prev = null; }
+    let prevText = null;
+    try { prevText = readFileSync(sf, 'utf8'); prev = JSON.parse(prevText); } catch { prev = null; }
+    // R2-Q1-M5: the published files a restart keeps stay bound to their hashes, but only when the old
+    // state still matches its digest (a forged old state cannot hand its hashes to the new chain).
+    const pd = existsSync(digestPath(sf)) ? readFileSync(digestPath(sf), 'utf8').trim() : null;
+    if (prev && prev.schema === SCHEMA && pd && pd === chainDigest(prevText, prev)) keptPublished = (prev.published && prev.published.sha256 ? prev.published : prev.kept_published) || null;
     if (prev && !opt.restart && (IN_FLIGHT.has(prev.state) || prev.state === 'ESCALATED_TO_OWNER'))
       throw new Refusal(`a chain is ${prev.state} for this ledger; finish it, run abort, or \`start <claims.md> --restart\``);
     if (opt.restart) log(`restart: discarding the chain in state ${prev ? prev.state : '(unreadable)'}; published audit/ files are kept as they are`);
@@ -624,7 +633,7 @@ function cmdStart(pos, opt, out, log) {
     recheck: { classes: [], rows: [] },
     rulings: {}, ombudsman: { round: 0, files: [], requested: [] },
     tokens: { auditor: [], ombudsman: [] },
-    dispatches: [], pending: null, published: false, records: [],
+    dispatches: [], pending: null, published: false, kept_published: keptPublished, records: [],
     history: [...((prev && Array.isArray(prev.history) && prev.history) || []), { from: prev ? prev.state : null, to: 'LEDGER_READY', event: opt.restart ? 'restart: ledger read' : 'ledger read', at: now(), rows: rows.length }],
   };
   for (const d of ['.work', '.chain']) rmSync(join(dirname(sf), d), { recursive: true, force: true });
@@ -805,18 +814,33 @@ function cmdAbort(pos, opt, out, log) {
   return 0;
 }
 
+// CP-03 R2-Q1-M5: published files whose bytes differ from the hash recorded at publish (or are gone).
+export function publishedTampered(st) {
+  const pub = st.published && st.published.sha256 ? st.published : st.kept_published;
+  if (!pub || !pub.sha256) return [];
+  const bad = [];
+  for (const [f, h] of Object.entries(pub.sha256)) {
+    const p = join(auditDir(st), f);
+    if (!existsSync(p)) { bad.push({ file: f, why: 'is missing' }); continue; }
+    if (sha256(readFileSync(p, 'utf8')) !== h) bad.push({ file: f, why: 'does not match the sha256 recorded at publish (edited by hand?)' });
+  }
+  return bad;
+}
 function cmdStatus(pos, opt, out, log) {
   const { st } = loadState(opt);
   const changed = st.state === 'LEDGER_READY' ? null : ledgerChanged(st); // PUBLISHABLE too: the SAFE.md is stale
-  if (opt.json) { out(JSON.stringify(changed ? { ...st, ledger_changed: changed } : st, null, 2)); return changed ? 1 : 0; }
+  const tamper = publishedTampered(st);
+  const bad = changed || tamper.length;
+  if (opt.json) { out(JSON.stringify({ ...st, ...(changed ? { ledger_changed: changed } : {}), ...(tamper.length ? { published_tampered: tamper } : {}) }, null, 2)); return bad ? 1 : 0; }
   if (changed) log(`LEDGER_CHANGED: ${changed}; this chain no longer covers the ledger. Re-audit with \`start <claims.md> --restart\``);
+  for (const t of tamper) log(`PUBLISHED_TAMPERED: audit/${t.file} ${t.why}; do not trust the published files. Re-audit with \`start <claims.md> --restart\``);
   out(`state ${st.state}${st.aborted && st.state === 'LEDGER_READY' ? ` (rolled back after ABORTED from ${st.aborted.from})` : ''}`);
   out(`ledger ${st.ledger} (${st.rows.length} rows); author ${st.author_model}; auditor ${st.auditor_model}; ombudsman ${st.ombudsman_model}`);
   out(`tier enum: ${st.tier_check === 'doc-it' ? 'checked by doc-it' : '[skip] doc-it not installed: tier enum'}`);
   out(`verdicts ${Object.keys(st.audit.verdicts).length}/${st.rows.length}; rulings ${Object.keys(st.rulings).length}/${st.rows.length}`);
   if (st.pending) out(`PENDING ${JSON.stringify(st.pending)}`);
-  if (st.published) out(`published ${st.published.at}: SAFE ${st.published.safe.length}, DO-NOT-PUBLISH ${st.published.do_not_publish.length}`);
-  return st.state === 'ESCALATED_TO_OWNER' ? 3 : (changed ? 1 : 0);
+  if (st.published) out(`published ${st.published.at}: SAFE ${st.published.safe.length}, DO-NOT-PUBLISH ${st.published.do_not_publish.length}${tamper.length ? `; PUBLISHED_TAMPERED: ${tamper.map((t) => t.file).join(', ')}` : '; files match their hashes'}`);
+  return st.state === 'ESCALATED_TO_OWNER' ? 3 : (bad ? 1 : 0);
 }
 
 export function main(argv = process.argv.slice(2), out = (s) => process.stdout.write(s + '\n'), log = (s) => process.stderr.write(s + '\n')) {

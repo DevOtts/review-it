@@ -25,6 +25,10 @@ All notable changes to the `review-it` plugin.
   publish re-derives every verdict and ruling from them: `STATE_TAMPERED` (Q1-M2).
 - A ledger changed after `start` refuses with `LEDGER_CHANGED`; `start --restart` re-audits (Q1-M3).
 - Duplicate ids in a verdict or rulings file, and an unusable doc-it (`[skip] doc-it unusable`), refuse (Q1-L3, Q1-L4).
+- A model id that names a family fixes it: `--model-family` cannot relabel `opus-xl` or `claude-opus-research`,
+  and an id naming two families is refused (R2-Q1-M4).
+- The published files are hashed into the chain state; `status` exits 1 with `PUBLISHED_TAMPERED` after a hand
+  edit of SAFE.md, ombudsman.md or the audit file. Consumers run `status` before trusting SAFE.md (R2-Q1-M5).
 
 ## [2.1.1] — 2026-10-18
 

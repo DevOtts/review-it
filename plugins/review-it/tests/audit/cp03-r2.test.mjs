@@ -3,9 +3,9 @@
 // "Round 2", §2 and §4). Each case replays the reviewer's command and asserts a refusal.
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { workspace, run, exists, cleanup, REPOS } from './helpers.mjs';
+import { workspace, run, state, exists, read, cleanup, REPOS } from './helpers.mjs';
 import { resolveFamily } from '../../scripts/audit-chain.mjs';
 
 after(cleanup);
@@ -74,3 +74,76 @@ test('R2-Q1-M4 (b) the same rules hold for the author model', () => {
   assert.match(r3.stderr, /G-6: auditor model claude-opus-5-5 is the author's model/);
 });
 
+
+// A legit chain: C1 TRUE, C2 FALSE → PUBLISHABLE with SAFE (1): C1, DO-NOT-PUBLISH (1): C2.
+function publishedChain() {
+  const ws = workspace('chain');
+  const ledger = opusLedger(ws);
+  assert.equal(run(['start', ledger, '--auditor-model', 'sonnet', ...REPOS], { home: ws.home }).status, 0);
+  writeFileSync(join(ws.dir, 'v.md'), verdicts([['C1', 'TRUE', 'review-it@eed4dec:LICENSE:1'], ['C2', 'FALSE', '`git show eed4dec:LICENSE`']]));
+  assert.equal(run(['record-audit', join(ws.dir, 'v.md'), '--ledger', ledger], { home: ws.home }).status, 0);
+  writeFileSync(join(ws.dir, 'o.md'), rulings([['C1', 'UPHELD'], ['C2', 'UPHELD']]));
+  const o = run(['record-ombudsman', join(ws.dir, 'o.md'), '--ledger', ledger], { home: ws.home });
+  assert.equal(o.status, 0, o.stderr);
+  assert.equal(state(ws).state, 'PUBLISHABLE');
+  return { ws, ledger };
+}
+
+test('R2-Q1-M5 a hand edit of the published SAFE.md is detected: status exits 1 with PUBLISHED_TAMPERED', () => {
+  const { ws, ledger } = publishedChain();
+  const st = state(ws);
+  assert.equal(Object.keys(st.published.sha256).length, 3, 'one hash per published file');
+  const clean = run(['status', '--ledger', ledger], { home: ws.home });
+  assert.equal(clean.status, 0, clean.stderr);
+  assert.match(clean.stdout, /published .*: SAFE 1, DO-NOT-PUBLISH 1; files match their hashes/);
+  // The reviewer's edit: move C2 into SAFE, DO-NOT-PUBLISH → none.
+  const safe = read(ws, 'audit/SAFE.md');
+  const forged = safe.replace(/## SAFE \(1\)\n\n- C1 — thing one\n/, '## SAFE (2)\n\n- C1 — thing one\n- C2 — thing two\n')
+    .replace(/## DO-NOT-PUBLISH \(1\)\n\n- C2 \(FALSE\)[^\n]*\n/, '## DO-NOT-PUBLISH (0)\n\n- none\n');
+  assert.notEqual(forged, safe, 'the forgery applied');
+  writeFileSync(join(ws.dir, 'audit/SAFE.md'), forged);
+  const s = run(['status', '--ledger', ledger], { home: ws.home });
+  assert.equal(s.status, 1);
+  assert.match(s.stderr, /PUBLISHED_TAMPERED: audit\/SAFE.md does not match the sha256 recorded at publish/);
+  assert.doesNotMatch(s.stdout, /files match their hashes/);
+  const j = run(['status', '--json', '--ledger', ledger], { home: ws.home });
+  assert.equal(j.status, 1);
+  assert.deepEqual(JSON.parse(j.stdout).published_tampered.map((x) => x.file), ['SAFE.md']);
+  // The other two published files and a deleted file are caught the same way.
+  writeFileSync(join(ws.dir, 'audit/SAFE.md'), safe);
+  assert.equal(run(['status', '--ledger', ledger], { home: ws.home }).status, 0, 'restored → clean');
+  for (const f of ['ombudsman.md', 'audit-sonnet.md']) {
+    const orig = read(ws, `audit/${f}`);
+    writeFileSync(join(ws.dir, `audit/${f}`), orig.replace('UPHELD', 'FALSE').replace('FALSE |', 'TRUE |') + ' ');
+    const r = run(['status', '--ledger', ledger], { home: ws.home });
+    assert.equal(r.status, 1, f);
+    assert.match(r.stderr, new RegExp(`PUBLISHED_TAMPERED: audit/${f.replace('.', '\\.')} does not match`), f);
+    writeFileSync(join(ws.dir, `audit/${f}`), orig);
+  }
+  writeFileSync(join(ws.dir, 'audit/SAFE.md'), '');
+  assert.equal(run(['status', '--ledger', ledger], { home: ws.home }).status, 1);
+});
+
+test('R2-Q1-M5 (b) the published hashes are covered by the chain digest: rewriting them in the state is STATE_TAMPERED', () => {
+  const { ws, ledger } = publishedChain();
+  writeFileSync(join(ws.dir, 'audit/SAFE.md'), read(ws, 'audit/SAFE.md').replace('- C1 — thing one', '- C1 — thing one\n- C2 — thing two'));
+  const sf = join(ws.dir, 'audit/chain-state.json');
+  const st = JSON.parse(readFileSync(sf, 'utf8'));
+  st.published.sha256['SAFE.md'] = 'f'.repeat(64);
+  writeFileSync(sf, JSON.stringify(st, null, 2) + '\n');
+  const s = run(['status', '--ledger', ledger], { home: ws.home });
+  assert.equal(s.status, 1);
+  assert.match(s.stderr, /STATE_TAMPERED/);
+});
+
+
+test('R2-Q1-M5 (c) the files a restart or abort keeps stay bound to their hashes', () => {
+  const { ws, ledger } = publishedChain();
+  assert.equal(run(['start', ledger, '--auditor-model', 'sonnet', '--restart', ...REPOS], { home: ws.home }).status, 0);
+  assert.equal(run(['abort', '--ledger', ledger], { home: ws.home }).status, 0);
+  assert.equal(run(['status', '--ledger', ledger], { home: ws.home }).status, 0, 'kept files unchanged → clean');
+  writeFileSync(join(ws.dir, 'audit/SAFE.md'), read(ws, 'audit/SAFE.md').replace('- C1 — thing one', '- C1 — thing one\n- C2 — thing two'));
+  const s = run(['status', '--ledger', ledger], { home: ws.home });
+  assert.equal(s.status, 1);
+  assert.match(s.stderr, /PUBLISHED_TAMPERED: audit\/SAFE.md/);
+});
