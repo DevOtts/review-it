@@ -36,6 +36,10 @@ All notable changes to the `review-it` plugin.
   `audit/.quarantine/<timestamp>/` first. `status` exits 1 with `PUBLISHED_UNBOUND`, also when the state is
   missing or fails its digest. A forged SAFE.md can no longer survive a restart from a tampered or deleted
   state (R3-Q1-M6).
+- Published names are matched case-insensitively, as macOS and Windows disks open them (`safe.md`, `ſafe.md`,
+  `Ombudsman.md`, `Audit-x.md`): a case variant is UNBOUND, so `status` exits 1 and `start` refuses it. Two names
+  in `audit/` that differ only by case are refused with `CASE_COLLISION`; a variant planted mid-chain is
+  quarantined at publish (R4-Q1-M7).
 - Lookalike model ids are folded before family matching (NFKC, confusable Greek/Cyrillic letters to Latin,
   0→o, 1→l, 5→s inside a word, separated letters read joined up), so `οpus`, `ｏｐｕｓ`, `claude-0pus-5-5`,
   `o-p-u-s` are `opus` and cannot be declared another family; an id still holding non-ASCII is refused (R3-L4).
