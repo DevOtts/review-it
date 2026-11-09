@@ -40,6 +40,15 @@ All notable changes to the `review-it` plugin.
   `Ombudsman.md`, `Audit-x.md`): a case variant is UNBOUND, so `status` exits 1 and `start` refuses it. Two names
   in `audit/` that differ only by case are refused with `CASE_COLLISION`; a variant planted mid-chain is
   quarantined at publish (R4-Q1-M7).
+- Ignorable code points are stripped when published names are folded, as HFS+ compares names (`SAFE<U+200C>.md`
+  opened as `audit/SAFE.md` there). Any `audit/` entry whose name is not printable ASCII is refused with
+  `UNSAFE_NAME` by `start` and `status`, is UNBOUND, and is quarantined by `--quarantine-published` or at publish (R5-Q1-M8).
+- G-6 family rules read the whole model id: bracketed text other than a trailing `[1m]` tag is refused, a family word
+  before a vendor segment still counts, and vendor words (`anthropic`, `claude`, `openai`, `google`, `meta`, `xai`) are
+  family hints that a resolved or declared family must match, so `gemini-2.5-pro[opus]` and a bare `claude` declared
+  `gemini` are refused (R5-Q1-M9, R5-L3). Prefix words after the head word are read as letters (`o-p-us`, `h-ai-ku`, R5-L1).
+- `llama.cpp`, `llamafile`, `mistral.rs`, `gpt4all` are router words; `gpt-4o`, `o3`, `o4-mini`, `gpt-oss`, `Qwen/Qwen2.5-…`,
+  `meta-llama/Llama-…` and `codestral` resolve without a declaration (R5-L2, R5-L4).
 - Lookalike model ids are folded before family matching (NFKC, confusable Greek/Cyrillic letters to Latin,
   0→o, 1→l, 5→s inside a word, separated letters read joined up), so `οpus`, `ｏｐｕｓ`, `claude-0pus-5-5`,
   `o-p-u-s` are `opus` and cannot be declared another family; an id still holding non-ASCII is refused (R3-L4).
