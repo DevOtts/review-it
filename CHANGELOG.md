@@ -2,7 +2,17 @@
 
 All notable changes to the `review-it` plugin.
 
-## [Unreleased]
+## [2.2.0] — 2026-11-09
+
+Minor release: audit mode (do-it 1.1 Q1, with the K2 doc-it tier hooks) and five rounds of CP-03 hardening.
+
+### Breaking
+- Hosts must declare the repos an audit cites (`--repos` or the ledger's `Repos:` header); cited shas and
+  paths are verified there, so an audit that declared nothing no longer passes on shape alone.
+- Any `audit/` entry whose name is not printable ASCII refuses with `UNSAFE_NAME` until it is quarantined
+  (`--quarantine-published`).
+- `o1`, `o3` and `o4` model ids resolve as the `gpt` family, so an audit whose author and auditor are both
+  of that family is refused by G-6.
 
 ### Added
 - Audit mode, `/review-it --audit <claims.md> [--stakes decision|routine]` (do-it 1.1 Q1, D6, G-6).
@@ -16,7 +26,7 @@ All notable changes to the `review-it` plugin.
   Without doc-it the audit prints `[skip] doc-it not installed: tier enum` and never reports that check
   as PASS (K2-03, D14).
 
-### Security (CP-03 adversarial review)
+### Security (CP-03 adversarial review, rounds 1–5)
 - G-6 fails closed: a model id that does not reduce to a known family (`opusplan`, `best`) is refused
   instead of being compared as a raw string; `--model-family` declares an unknown one (Q1-H1).
 - Evidence is verified, not only shaped: cited shas and paths are looked up with `git cat-file -e` in the
