@@ -214,3 +214,15 @@ test('R5-L2 local runtimes named after a family (llama.cpp, llamafile, mistral.r
   assert.match(resolveFamily('llama.cppopus', { 'llama.cppopus': 'opus' }).error, /names more than one family/);
   assert.match(resolveFamily('gpt4all/opus', { 'gpt4all/opus': 'gpt' }).error, /contradicts the known family .*\(opus\)/);
 });
+
+test('R5-L4 common real ids resolve without a declaration; the lookalike and two-family refusals are unchanged', () => {
+  for (const [id, fam] of [['gpt-4o', 'gpt'], ['gpt-4o-mini', 'gpt'], ['o3', 'gpt'], ['o4-mini', 'gpt'], ['o1-preview', 'gpt'], ['openai/o3', 'gpt'],
+    ['meta-llama/Llama-3.1-8B-Instruct', 'llama'], ['Qwen/Qwen2.5-Coder-32B-Instruct', 'qwen'], ['openai/gpt-oss-120b', 'gpt'], ['codestral-latest', 'mistral']]) {
+    assert.deepEqual(resolveFamily(id), { family: fam }, id);
+    assert.match(resolveFamily(id, { [id]: fam === 'gpt' ? 'gemini' : 'gpt' }).error, /contradicts the known family|names the vendor/, `${id} declared otherwise`);
+  }
+  // the o-series rule binds only `o` + 1/3/4; o-p-us is still opus, and a vendor conflict is refused
+  assert.match(resolveFamily('o-p-us', { 'o-p-us': 'gpt' }).error, /contradicts the known family .*\(opus\)/);
+  assert.match(resolveFamily('google/o3').error, /names the vendor google/);
+  assert.match(resolveFamily('o3-opus').error, /names .*opus/);
+});

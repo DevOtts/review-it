@@ -79,11 +79,13 @@ function writeAtomic(file, text) {
 // Host pointers (`default`, `best`, `inherit`) name no model at all and are refused outright.
 export const MODEL_FAMILIES = {
   families: FAMILIES,
-  aliases: { opusplan: 'opus', claudeopus: 'opus', claudesonnet: 'sonnet', claudehaiku: 'haiku', claudefable: 'fable', chatgpt: 'gpt' },
+  aliases: { opusplan: 'opus', claudeopus: 'opus', claudesonnet: 'sonnet', claudehaiku: 'haiku', claudefable: 'fable', chatgpt: 'gpt',
+    // CP-03 R5-L4: Mistral's product names
+    codestral: 'mistral', mixtral: 'mistral', ministral: 'mistral', magistral: 'mistral', devstral: 'mistral', pixtral: 'mistral' },
   pointers: ['default', 'best', 'inherit', 'auto', 'any', 'same', 'current', 'main'],
   // words allowed after the family word (versions and dates are digits and pass on their own)
   tiers: ['latest', 'preview', 'exp', 'experimental', 'thinking', 'mini', 'nano', 'pro', 'flash', 'lite', 'turbo', 'instruct', 'chat',
-    'high', 'low', 'medium', 'large', 'small', 'max', 'r', 'fast', 'plan', 'codex', 'coder', 'v', 'k', 'm', 'b', 'context', 'beta', 'stable', 'ultra', 'plus'],
+    'high', 'low', 'medium', 'large', 'small', 'max', 'r', 'fast', 'plan', 'codex', 'coder', 'v', 'k', 'm', 'b', 'context', 'beta', 'stable', 'ultra', 'plus', 'oss'],
   prefixes: ['us', 'eu', 'apac', 'global', 'anthropic', 'claude', 'bedrock', 'vertex', 'models', 'openai', 'google', 'meta', 'x', 'ai', 'xai'],
   // CP-03 R4-L8: runtimes and routers that serve many families. Each is a whole word that names no model,
   // and `ollama` merely CONTAINS `llama`; read as a prefix it is skipped, never searched for a family inside
@@ -167,8 +169,10 @@ function resolveFamilyInner(m, declared) {
   if (words.slice(i).every((w) => /^\d+$/.test(w) || MODEL_FAMILIES.tiers.includes(w)) && words.some((w) => MODEL_FAMILIES.routers.includes(w)))
     return { error: `model id "${id}" names only a runtime or router (${words.filter((w) => MODEL_FAMILIES.routers.includes(w)).join(', ')}), not a model; pass the model it serves (e.g. ollama/qwen2.5:7b)` };
   const head = words[i];
-  const fam = head && (FAMILIES.includes(head) ? head : MODEL_FAMILIES.aliases[head]);
-  const tailOk = words.slice(i + 1).every((w) => /^\d+$/.test(w) || MODEL_FAMILIES.tiers.includes(w));
+  // R5-L4: OpenAI's o-series (`o1`, `o3`, `o4-mini`) is gpt; in the tail, `o` right after a version number
+  // (`gpt-4o`) and a repeat of the family word (`qwen/qwen2.5`, `meta-llama/llama-3.1`) are allowed.
+  const fam = head && (FAMILIES.includes(head) ? head : MODEL_FAMILIES.aliases[head] || (head === 'o' && /^[134]$/.test(words[i + 1] || '') ? 'gpt' : undefined));
+  const tailOk = words.slice(i + 1).every((w, k, t) => /^\d+$/.test(w) || MODEL_FAMILIES.tiers.includes(w) || w === fam || (w === 'o' && /^\d+$/.test(k ? t[k - 1] : words[i])));
   const known = fam && tailOk ? fam : null;
   // CP-03 R2-Q1-M4: any word that names a family fixes the family, even when the rest of the id is not
   // understood (`opus-xl`, `claude-opus-research`), so a declaration can never relabel it. A word that
