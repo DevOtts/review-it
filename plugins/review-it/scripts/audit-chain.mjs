@@ -184,7 +184,11 @@ function resolveFamilyInner(m, declared) {
   let lh = 0;
   while (lh < looks.length && (MODEL_FAMILIES.prefixes.includes(looks[lh]) || /^\d+$/.test(looks[lh]))) lh++;
   const joined = looks.filter((w, k) => !(MODEL_FAMILIES.prefixes.includes(w) || /^\d+$/.test(w) || (k !== lh && MODEL_FAMILIES.tiers.includes(w)))).join('');
-  for (const f of FAMILIES) if (joined.includes(f)) named.add(f);
+  // CP-03 R5-L1: `us`, `ai`, `x` and the router words are prefixes, so dropping every prefix let `o-p-us`,
+  // `h-ai-ku` and `op-local-us` hide a family. A second joined reading drops only LEADING prefixes (and
+  // router words anywhere): the prefix words that come after the head word are kept as letters.
+  const joinedKeep = looks.filter((w, k) => !((k < lh && MODEL_FAMILIES.prefixes.includes(w)) || MODEL_FAMILIES.routers.includes(w) || /^\d+$/.test(w) || (k !== lh && MODEL_FAMILIES.tiers.includes(w)))).join('');
+  for (const f of FAMILIES) if (joined.includes(f) || joinedKeep.includes(f)) named.add(f);
   if (named.size > 1) return { error: `model id "${id}" names more than one family (${[...named].join(', ')}); refused, G-6 cannot tell which model it is` };
   const fixed = named.size ? [...named][0] : null;
   const decl = declared[id] ?? declared[id.toLowerCase()];

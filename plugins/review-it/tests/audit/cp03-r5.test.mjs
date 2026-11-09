@@ -176,3 +176,16 @@ test('R5-Q1-M9 a family word in brackets or before a vendor segment is never era
     assert.ok(!existsSync(join(ws.dir, 'audit/chain-state.json')), `${aud}: no state written`);
   }
 });
+
+test('R5-L1 prefix words after the head word are read as letters: o-p-us, h-ai-ku, op-local-us cannot be declared another family', () => {
+  for (const [id, fam] of [['o-p-us', 'opus'], ['op-local-us', 'opus'], ['h-ai-ku', 'haiku'], ['ollama/o-p-us', 'opus']]) {
+    assert.match(resolveFamily(id, { [id]: 'gemini' }).error, new RegExp(`contradicts the known family .*\\(${fam}\\)`), id);
+  }
+  assert.match(resolveFamily('gemini-op-us', { 'gemini-op-us': 'gemini' }).error, /names more than one family \(gemini, opus\)/);
+  // end to end against the opus author: declared gemini is refused
+  const ws = workspace('chain');
+  const ledger = opusLedger(ws.dir);
+  const r = run(['start', ledger, '--auditor-model', 'o-p-us', '--model-family', 'o-p-us=gemini', ...REPOS], { home: ws.home });
+  assert.equal(r.status, 1, r.stderr);
+  assert.match(r.stderr, /G-6: .*contradicts the known family of o-p-us \(opus\)/);
+});
