@@ -119,7 +119,9 @@ const splitWords = (s) => s.split(/[^a-z0-9]+|(?<=[a-z])(?=[0-9])|(?<=[0-9])(?=[
 const rawWords = (s) => splitWords(s);
 // Vendor words hint at the families they make; an id whose resolved or declared family is not one of
 // them is refused (`anthropic/gemini-pro`, `meta/gpt-x` declared gpt). `x` + `ai` is xai (`x-ai/grok-4`).
-export const VENDOR_HINTS = { anthropic: ['opus', 'sonnet', 'haiku', 'fable'], openai: ['gpt', 'codex'], google: ['gemini'], meta: ['llama'], xai: ['grok'] };
+// CP-03 R5-L3: `claude` is a vendor hint too, so a bare `claude`, `anthropic`, `anthropic/claude` or `claude-3`
+// can only be declared as a claude family (a host that maps `claude` to its default model is still bound).
+export const VENDOR_HINTS = { anthropic: ['opus', 'sonnet', 'haiku', 'fable'], claude: ['opus', 'sonnet', 'haiku', 'fable'], openai: ['gpt', 'codex'], google: ['gemini'], meta: ['llama'], xai: ['grok'] };
 function vendorHint(words) {
   const vs = [...new Set(words.flatMap((w, k) => (VENDOR_HINTS[w] ? [w] : w === 'x' && words[k + 1] === 'ai' ? ['xai'] : [])))];
   if (!vs.length) return null;
@@ -134,9 +136,10 @@ function familyWords(m) {
 // → { family } or { error }. `declared` maps a model id (as typed) to a family name.
 export function resolveFamily(m, declared = {}) {
   const r = resolveFamilyInner(m, declared);
-  if (r.error) return r;
   const id = String(m || '').trim();
   const hint = vendorHint(rawWords(normalizeModelId(id)));
+  if (r.error) return hint && hint.fams.length && /^unknown model family: /.test(r.error) && !/names the \w+ family/.test(r.error)
+    ? { error: `unknown model family: ${id}; it names the vendor ${hint.vendors.join(' and ')}, so declare it with --model-family ${id}=<family>, one of ${hint.fams.join(', ')} (no other family can be declared for it)` } : r;
   if (hint && !hint.fams.includes(r.family))
     return { error: `model id "${id}" names the vendor ${hint.vendors.join(' and ')}, which ${hint.fams.length ? `makes only ${hint.fams.join(', ')}` : 'name no family in common'}, but resolves to ${r.family}; refused, G-6 cannot tell which model it is` };
   return r;

@@ -189,3 +189,18 @@ test('R5-L1 prefix words after the head word are read as letters: o-p-us, h-ai-k
   assert.equal(r.status, 1, r.stderr);
   assert.match(r.stderr, /G-6: .*contradicts the known family of o-p-us \(opus\)/);
 });
+
+test('R5-L3 bare claude / anthropic ids are bound to the claude families: declaring them gemini is refused', () => {
+  for (const id of ['claude', 'anthropic', 'anthropic/claude', 'claude-3']) {
+    assert.match(resolveFamily(id).error, /^unknown model family: .*one of opus, sonnet, haiku, fable/, id);
+    assert.match(resolveFamily(id, { [id]: 'gemini' }).error, /names the vendor .*makes only opus, sonnet, haiku, fable, but resolves to gemini/, id);
+    assert.deepEqual(resolveFamily(id, { [id]: 'sonnet' }), { family: 'sonnet' }, id);
+  }
+  // end to end: the reviewer's `claude` declared gemini against the opus author
+  const ws = workspace('chain');
+  const ledger = opusLedger(ws.dir);
+  const r = run(['start', ledger, '--auditor-model', 'claude', '--model-family', 'claude=gemini', ...REPOS], { home: ws.home });
+  assert.equal(r.status, 1, r.stderr);
+  assert.match(r.stderr, /G-6: auditor model: model id "claude" names the vendor claude, .*resolves to gemini/);
+  assert.ok(!existsSync(join(ws.dir, 'audit/chain-state.json')));
+});
