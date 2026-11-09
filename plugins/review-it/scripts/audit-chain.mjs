@@ -112,19 +112,45 @@ export function normalizeModelId(m) {
 }
 const DIGIT_LOOKALIKE = { 0: 'o', 1: 'l', 5: 's' };
 const foldDigits = (s) => s.replace(/[a-z0-9]+/g, (w) => (/[a-z]/.test(w) ? w.replace(/[015]/g, (d) => DIGIT_LOOKALIKE[d]) : w));
+// CP-03 R5-Q1-M9: the words of the WHOLE normalised id, nothing stripped. The family-binding rules (a word
+// that names a family fixes it; two families are refused; the joined-letters pass) read these, so text that
+// familyWords drops (`[opus]`, `opus/anthropic/…`) can never hide a family.
+const splitWords = (s) => s.split(/[^a-z0-9]+|(?<=[a-z])(?=[0-9])|(?<=[0-9])(?=[a-z])/).filter(Boolean);
+const rawWords = (s) => splitWords(s);
+// Vendor words hint at the families they make; an id whose resolved or declared family is not one of
+// them is refused (`anthropic/gemini-pro`, `meta/gpt-x` declared gpt). `x` + `ai` is xai (`x-ai/grok-4`).
+export const VENDOR_HINTS = { anthropic: ['opus', 'sonnet', 'haiku', 'fable'], openai: ['gpt', 'codex'], google: ['gemini'], meta: ['llama'], xai: ['grok'] };
+function vendorHint(words) {
+  const vs = [...new Set(words.flatMap((w, k) => (VENDOR_HINTS[w] ? [w] : w === 'x' && words[k + 1] === 'ai' ? ['xai'] : [])))];
+  if (!vs.length) return null;
+  const fams = vs.map((v) => VENDOR_HINTS[v]).reduce((a, b) => a.filter((x) => b.includes(x)));
+  return { vendors: vs, fams };
+}
 function familyWords(m) {
   let s = normalizeModelId(m);
   s = s.replace(/\[[^\]]*\]/g, ' ').replace(/^(?:[a-z]+[./])*(?:anthropic|openai|google|meta|xai)[./:]/, ' ').replace(/^claude(?=[a-z])/, '');
-  return s.split(/[^a-z0-9]+|(?<=[a-z])(?=[0-9])|(?<=[0-9])(?=[a-z])/).filter(Boolean);
+  return splitWords(s);
 }
 // → { family } or { error }. `declared` maps a model id (as typed) to a family name.
 export function resolveFamily(m, declared = {}) {
+  const r = resolveFamilyInner(m, declared);
+  if (r.error) return r;
+  const id = String(m || '').trim();
+  const hint = vendorHint(rawWords(normalizeModelId(id)));
+  if (hint && !hint.fams.includes(r.family))
+    return { error: `model id "${id}" names the vendor ${hint.vendors.join(' and ')}, which ${hint.fams.length ? `makes only ${hint.fams.join(', ')}` : 'name no family in common'}, but resolves to ${r.family}; refused, G-6 cannot tell which model it is` };
+  return r;
+}
+function resolveFamilyInner(m, declared) {
   const id = String(m || '').trim();
   if (!id) return { error: 'empty model id' };
   const norm = normalizeModelId(id);
   const nonAscii = [...norm].filter((c) => c.charCodeAt(0) > 0x7e || c.charCodeAt(0) < 0x20);
   if (nonAscii.length)
     return { error: `model id "${id}" contains non-ASCII or control characters (${[...new Set(nonAscii)].map((c) => `U+${c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`).join(', ')}) after NFKC and lookalike folding; refused, a lookalike id is never matched or declared` };
+  // R5-Q1-M9: a bracket holds only a trailing context-size tag (`[1m]`, `[200k]`); any other bracketed text is refused.
+  if (/[[\]]/.test(norm.replace(/\[\d+[km]\]$/, '')))
+    return { error: `model id "${id}" holds bracketed text other than a trailing context-size tag such as [1m]; refused, a bracket can hide a family` };
   const words = familyWords(id);
   if (words.length === 1 && MODEL_FAMILIES.pointers.includes(words[0]))
     return { error: `model id "${id}" is a host pointer, not a model; pass the concrete model id (G-6 cannot be checked against "${id}")` };
@@ -142,16 +168,19 @@ export function resolveFamily(m, declared = {}) {
   // only CONTAINS a family name (`opusxl`) fixes it too. Two different families in one id are refused.
   // A family word that is also a tier word (`codex` in `gpt-5-codex`) counts only as the head word.
   const named = new Set();
-  words.forEach((w, k) => {
+  const raw = rawWords(norm);
+  let ri = 0;
+  while (ri < raw.length && (MODEL_FAMILIES.prefixes.includes(raw[ri]) || /^\d+$/.test(raw[ri]))) ri++;
+  raw.forEach((w, k) => {
     if (MODEL_FAMILIES.prefixes.includes(w) || /^\d+$/.test(w)) return;
-    if (k !== i && MODEL_FAMILIES.tiers.includes(w)) return;
+    if (k !== ri && MODEL_FAMILIES.tiers.includes(w)) return;
     if (FAMILIES.includes(w)) { named.add(w); return; }
     if (MODEL_FAMILIES.aliases[w]) { named.add(MODEL_FAMILIES.aliases[w]); return; }
-    for (const f of FAMILIES) if (w.includes(f) && !(k !== i && f === 'codex')) named.add(f);
+    for (const f of FAMILIES) if (w.includes(f) && !(k !== ri && f === 'codex')) named.add(f);
   });
   // R3-L4: digit lookalikes inside a word, and the id's letters read joined up (prefixes, numbers and
   // non-head tier words left out, so `gpt-5-codex` stays one family).
-  const looks = familyWords(foldDigits(normalizeModelId(id)));
+  const looks = rawWords(foldDigits(norm));
   let lh = 0;
   while (lh < looks.length && (MODEL_FAMILIES.prefixes.includes(looks[lh]) || /^\d+$/.test(looks[lh]))) lh++;
   const joined = looks.filter((w, k) => !(MODEL_FAMILIES.prefixes.includes(w) || /^\d+$/.test(w) || (k !== lh && MODEL_FAMILIES.tiers.includes(w)))).join('');

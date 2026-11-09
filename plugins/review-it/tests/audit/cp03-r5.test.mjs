@@ -145,3 +145,34 @@ test('R5-Q1-M8 a name holding an ignorable code point (SAFE<U+200C>.md) is UNSAF
     } finally { hfs.detach(); }
   }
 });
+
+test('R5-Q1-M9 a family word in brackets or before a vendor segment is never erased: the reviewer ids are refused against an opus author', () => {
+  const ids = ['gemini-2.5-pro[opus]', 'gemini[claude-opus-5-5]', '[opus-5-5]gemini-pro', '[opus]gemini', 'opus/anthropic/gemini-pro', 'opus.anthropic.gemini-2.5-pro', 'opus/meta/llama-3'];
+  for (const id of ids) {
+    assert.ok(resolveFamily(id).error, `${id} resolved silently: ${JSON.stringify(resolveFamily(id))}`);
+    for (const fam of ['gemini', 'llama', 'sonnet']) assert.ok(resolveFamily(id, { [id]: fam }).error, `${id} declared ${fam}`);
+  }
+  // the family-binding rules read the whole id: two families, even when the bracket rule is not what refuses
+  for (const id of ['opus/anthropic/gemini-pro', 'opus.anthropic.gemini-2.5-pro', 'opus/meta/llama-3'])
+    assert.match(resolveFamily(id).error, /names more than one family/, id);
+  for (const id of ['gemini-2.5-pro[opus]', '[opus]gemini', 'gemini[foo]', 'opus[x]']) assert.match(resolveFamily(id).error, /bracketed text/, id);
+  // a vendor segment is a family hint: a conflicting resolved or declared family is refused
+  for (const [id, decl] of [['anthropic/gemini-pro', null], ['google/opus-x', 'opus'], ['meta/qwen-7b', 'qwen'], ['xai/gpt-5', null], ['openai/gemma-x', 'gemini'], ['anthropic/openai/x', 'gpt']]) {
+    assert.match(resolveFamily(id, decl ? { [id]: decl } : {}).error, /names the vendor/, id);
+  }
+  // real ids still resolve
+  for (const [id, fam] of [['claude-opus-5-5[1m]', 'opus'], ['us.anthropic.claude-opus-5-5-v1:0', 'opus'], ['openrouter/anthropic/claude-opus-5-5', 'opus'],
+    ['bedrock/anthropic.claude-3-haiku', 'haiku'], ['x-ai/grok-4', 'grok'], ['models/gemini-1.5-pro-002', 'gemini'], ['vertex_ai/gemini-2.5-pro', 'gemini'],
+    ['google/gemini-2.5-flash', 'gemini'], ['meta/llama-3.1-70b', 'llama'], ['openai/gpt-4.1', 'gpt'], ['claude-sonnet-4@20250514', 'sonnet'], ['gpt-5-codex', 'gpt']]) {
+    assert.deepEqual(resolveFamily(id), { family: fam }, id);
+  }
+  // end to end: the reviewer's start against the opus ledger is refused, nothing written
+  const ws = workspace('chain');
+  const ledger = opusLedger(ws.dir);
+  for (const [aud, decl] of [['gemini-2.5-pro[opus]', null], ['gemini-2.5-pro[opus]', 'gemini'], ['[opus]gemini', null], ['opus/anthropic/gemini-pro', null], ['opus/meta/llama-3', 'llama']]) {
+    const r = run(['start', ledger, '--auditor-model', aud, ...(decl ? ['--model-family', `${aud}=${decl}`] : []), ...REPOS], { home: ws.home });
+    assert.equal(r.status, 1, `${aud}: ${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /G-6: auditor/);
+    assert.ok(!existsSync(join(ws.dir, 'audit/chain-state.json')), `${aud}: no state written`);
+  }
+});
