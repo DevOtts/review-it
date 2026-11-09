@@ -614,14 +614,14 @@ function publish(st, log) {
   // name on a case-insensitive disk when SAFE.md is written over it. No hash ever names a variant, so it is
   // unbound: move it to audit/.quarantine/<timestamp>/ (never deleted) before writing.
   const targets = [`audit-${slug}.md`, 'ombudsman.md', 'SAFE.md'].map(foldName);
-  const variants = listDir(dir).filter((f) => targets.includes(foldName(f)) && ![`audit-${slug}.md`, 'ombudsman.md', 'SAFE.md'].includes(f));
+  const variants = listDir(dir).filter((f) => isUnsafeName(f) || targets.includes(foldName(f)) && ![`audit-${slug}.md`, 'ombudsman.md', 'SAFE.md'].includes(f));
   let quarantined = null;
   if (variants.length) {
     const q = join(dir, '.quarantine', now().replace(/[:.]/g, '-'));
     mkdirSync(q, { recursive: true });
     for (const f of variants) renameSync(join(dir, f), join(q, f));
     quarantined = { dir: relative(dir, q), files: variants };
-    log(`quarantined ${variants.map((f) => `audit/${f}`).join(', ')} → ${relative(dirname(dir), q)}/ (case variant of a published name; not deleted)`);
+    log(`quarantined ${variants.map((f) => `audit/${showName(f)}`).join(', ')} → ${relative(dirname(dir), q)}/ (case variant of a published name; not deleted)`);
   }
   writeAtomic(join(dir, `audit-${slug}.md`), audit);
   writeAtomic(join(dir, 'ombudsman.md'), omb);
@@ -719,6 +719,9 @@ function cmdStart(pos, opt, out, log) {
   const left = caseCollisions(aNames.filter((f) => !unbound.includes(f)));
   if (left.length || (coll.length && !opt['quarantine-published']))
     throw new Refusal(`${collisionMsg(left.length ? left : coll)}; nothing started.${left.length ? ' Rename or remove one of each pair by hand' : ` Re-run with --quarantine-published to move the unbound ${unbound.map((f) => `audit/${f}`).join(', ')} to audit/.quarantine/<timestamp>/ and start`}`);
+  const unsafe = unsafeNames(aNames);
+  if (unsafe.length && !opt['quarantine-published'])
+    throw new Refusal(`${unsafeMsg(unsafe)}; nothing started. Inspect ${unsafe.length === 1 ? 'it' : 'them'}, then re-run with --quarantine-published to move ${unsafe.length === 1 ? 'it' : 'them'} to audit/.quarantine/<timestamp>/ and start`);
   if (unbound.length && !opt['quarantine-published'])
     throw new Refusal(`${unboundMsg(unbound, keptPublished ? 'their bytes differ from the recorded hash, or no hash names them' : (existsSync(sf) ? 'the chain state is unreadable, tampered or of another schema' : 'there is no chain state'))}; nothing started. Inspect ${unbound.length === 1 ? 'it' : 'them'}, then re-run with --quarantine-published to move ${unbound.length === 1 ? 'it' : 'them'} to audit/.quarantine/<timestamp>/ and start`);
   if (opt.restart && existsSync(sf)) log(`restart: discarding the chain in state ${prev ? prev.state : '(unreadable)'}; published audit/ files bound to a recorded hash are kept as they are`);
@@ -749,7 +752,7 @@ function cmdStart(pos, opt, out, log) {
       if (!Object.keys(keptPublished.sha256).length) st.kept_published = null;
     }
     st.history[st.history.length - 1].quarantined = { dir: relative(aDir, q), files: unbound };
-    log(`quarantined ${unbound.map((f) => `audit/${f}`).join(', ')} → ${relative(dirname(aDir), q)}/ (PUBLISHED_UNBOUND; not deleted)`);
+    log(`quarantined ${unbound.map((f) => `audit/${showName(f)}`).join(', ')} → ${relative(dirname(aDir), q)}/ (PUBLISHED_UNBOUND; not deleted)`);
   }
   for (const d of ['.work', '.chain']) rmSync(join(dirname(sf), d), { recursive: true, force: true });
   const req = dispatch(st, 'auditor', st.audit.requested, 'audit every row from primary sources');
@@ -953,11 +956,24 @@ export function publishedTampered(st) {
 // byte for byte: on such a disk `audit/SAFE.md` opens `safe.md`, and even `ſafe.md` (long s, which case-folds
 // to s). `foldName` over-folds on purpose (NFKC, then upper, then lower case): a name that MIGHT open as a
 // published file is treated as one, so it is UNBOUND unless a recorded hash names it byte for byte.
-export const foldName = (f) => String(f).normalize('NFKC').toUpperCase().toLowerCase().normalize('NFC');
-export const isPublishedName = (f) => { const l = foldName(f); return l === 'safe.md' || l === 'ombudsman.md' || /^audit-.+\.md$/.test(l); };
+// CP-03 R5-Q1-M8: HFS+ (Mac OS Extended) IGNORES some code points when it compares names, so on such a disk
+// `audit/SAFE.md` opens a planted `SAFE<U+200C>.md`. NFKC keeps them, so they are stripped first: every
+// Unicode Default_Ignorable_Code_Point (ZWSP/ZWNJ/ZWJ, LRM/RLM, the bidi controls, U+2060–206F, soft hyphen,
+// variation selectors U+FE00–FE0F, U+FEFF, tags U+E0000–E0FFF …) and the listed ranges explicitly.
+const IGNORABLE = /[\p{Default_Ignorable_Code_Point}\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFE00-\uFE0F\uFEFF\u{E0000}-\u{E0FFF}]/gu;
+export const foldName = (f) => String(f).normalize('NFKC').replace(IGNORABLE, '').toUpperCase().toLowerCase().normalize('NFC');
+// R5-Q1-M8 (fail closed): the chain writes only printable-ASCII names, so a top-level audit/ entry whose
+// name holds anything else (an ignorable, a lookalike, any non-ASCII) is UNSAFE_NAME: it is counted as a
+// published name (so it is UNBOUND, and quarantined by --quarantine-published or at publish), and status
+// and start refuse while it is there. No disk-specific folding rule has to be complete for this to hold.
+export const isUnsafeName = (f) => /[^\x20-\x7e]/.test(String(f));
+export const isPublishedName = (f) => { if (isUnsafeName(f)) return true; const l = foldName(f); return l === 'safe.md' || l === 'ombudsman.md' || /^audit-.+\.md$/.test(l); };
+const showName = (f) => [...String(f)].map((c) => (/[\x20-\x7e]/.test(c) ? c : `<U+${c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}>`)).join('');
+export const unsafeNames = (names) => names.filter(isUnsafeName).sort();
+export const unsafeMsg = (names) => `UNSAFE_NAME: ${names.map((f) => `audit/${showName(f)}`).join(', ')} ${names.length === 1 ? 'holds' : 'hold'} a non-ASCII or ignorable code point; a disk may open ${names.length === 1 ? 'it' : 'them'} as a published file (HFS+ ignores such code points), and the chain never writes such a name`;
 const listDir = (dir) => (existsSync(dir) ? readdirSync(dir) : []);
 export function publishedOnDisk(dir, names = listDir(dir)) {
-  return names.filter((f) => isPublishedName(f) && statSync(join(dir, f)).isFile()).sort();
+  return names.filter((f) => isUnsafeName(f) || (isPublishedName(f) && statSync(join(dir, f)).isFile())).sort();
 }
 // Two entries of audit/ whose names fold to the same name (only possible on a case-sensitive disk) are a
 // CASE_COLLISION: which one a consumer opens depends on the disk the folder is copied to. Pure over a
@@ -974,7 +990,7 @@ export const collisionMsg = (groups) => `CASE_COLLISION: ${groups.map((g) => g.m
 export function unboundPublished(dir, hashes = {}, names = listDir(dir)) {
   return publishedOnDisk(dir, names).filter((f) => !(f in hashes) || sha256(readFileSync(join(dir, f), 'utf8')) !== hashes[f]);
 }
-const unboundMsg = (files, how) => `PUBLISHED_UNBOUND: ${files.map((f) => `audit/${f}`).join(', ')} ${files.length === 1 ? 'is' : 'are'} not covered by any hash recorded in a valid chain state (${how}); do not trust ${files.length === 1 ? 'it' : 'them'}`;
+const unboundMsg = (files, how) => `PUBLISHED_UNBOUND: ${files.map((f) => `audit/${showName(f)}`).join(', ')} ${files.length === 1 ? 'is' : 'are'} not covered by any hash recorded in a valid chain state (${how}); do not trust ${files.length === 1 ? 'it' : 'them'}`;
 function cmdStatus(pos, opt, out, log) {
   // CP-03 R3-Q1-M6: with no state, or a state that fails its digest, every published file on disk is
   // UNBOUND. Report them and exit 1 (never 2, which reads as "nothing to check").
@@ -985,8 +1001,9 @@ function cmdStatus(pos, opt, out, log) {
     const files = publishedOnDisk(dir, names), coll = caseCollisions(names);
     if (files.length || coll.length) {
       if (coll.length) log(collisionMsg(coll));
+      if (unsafeNames(names).length) log(unsafeMsg(unsafeNames(names)));
       if (files.length) log(`${unboundMsg(files, e.message.split(';')[0])}. Re-audit with \`start <claims.md> --restart --quarantine-published\``);
-      if (opt.json) out(JSON.stringify({ state: null, error: e.message, published_unbound: files, ...(coll.length ? { case_collision: coll } : {}) }, null, 2));
+      if (opt.json) out(JSON.stringify({ state: null, error: e.message, published_unbound: files, ...(coll.length ? { case_collision: coll } : {}), ...(unsafeNames(names).length ? { unsafe_name: unsafeNames(names) } : {}) }, null, 2));
       throw new Refusal(e.message, 1);
     }
     throw e;
@@ -996,9 +1013,10 @@ function cmdStatus(pos, opt, out, log) {
   const tamper = publishedTampered(st);
   const names = listDir(auditDir(st));
   const unbound = unboundPublished(auditDir(st), recordedHashes(st).all, names).filter((f) => !tamper.some((t) => t.file === f));
-  const coll = caseCollisions(names);
-  const bad = changed || tamper.length || unbound.length || coll.length;
-  if (opt.json) { out(JSON.stringify({ ...st, ...(changed ? { ledger_changed: changed } : {}), ...(tamper.length ? { published_tampered: tamper } : {}), ...(unbound.length ? { published_unbound: unbound } : {}), ...(coll.length ? { case_collision: coll } : {}) }, null, 2)); return bad ? 1 : 0; }
+  const coll = caseCollisions(names), unsafe = unsafeNames(names);
+  const bad = changed || tamper.length || unbound.length || coll.length || unsafe.length;
+  if (opt.json) { out(JSON.stringify({ ...st, ...(changed ? { ledger_changed: changed } : {}), ...(tamper.length ? { published_tampered: tamper } : {}), ...(unbound.length ? { published_unbound: unbound } : {}), ...(coll.length ? { case_collision: coll } : {}), ...(unsafe.length ? { unsafe_name: unsafe } : {}) }, null, 2)); return bad ? 1 : 0; }
+  if (unsafe.length) log(`${unsafeMsg(unsafe)}. Re-audit with \`start <claims.md> --restart --quarantine-published\``);
   if (coll.length) log(`${collisionMsg(coll)}. Re-audit with \`start <claims.md> --restart --quarantine-published\``);
   if (changed) log(`LEDGER_CHANGED: ${changed}; this chain no longer covers the ledger. Re-audit with \`start <claims.md> --restart\``);
   for (const t of tamper) log(`PUBLISHED_TAMPERED: audit/${t.file} ${t.why}; do not trust the published files. Re-audit with \`start <claims.md> --restart\``);
