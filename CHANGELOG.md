@@ -2,6 +2,70 @@
 
 All notable changes to the `review-it` plugin.
 
+## [2.2.0] — 2026-11-09
+
+Minor release: audit mode (do-it 1.1 Q1, with the K2 doc-it tier hooks) and five rounds of CP-03 hardening.
+
+### Breaking
+- Hosts must declare the repos an audit cites (`--repos` or the ledger's `Repos:` header); cited shas and
+  paths are verified there, so an audit that declared nothing no longer passes on shape alone.
+- Any `audit/` entry whose name is not printable ASCII refuses with `UNSAFE_NAME` until it is quarantined
+  (`--quarantine-published`).
+- `o1`, `o3` and `o4` model ids resolve as the `gpt` family, so an audit whose author and auditor are both
+  of that family is refused by G-6.
+
+### Added
+- Audit mode, `/review-it --audit <claims.md> [--stakes decision|routine]` (do-it 1.1 Q1, D6, G-6).
+  `scripts/audit-chain.mjs` referees the chain from auditor to ombudsman, following CONTRACT §3.2: one
+  re-dispatch of the missing rows, then escalation to the owner; PARTIAL_TRUST re-check of a class
+  after an overturned TRUE; owner abort with rollback. State lives in `audit/chain-state.json`. It
+  publishes `audit/audit-<model>.md`, `audit/ombudsman.md` and `audit/SAFE.md` only when the chain
+  completes. An auditor of the author's model is refused before dispatch. `--stakes routine` runs only
+  plan-it's `gate-check claims`.
+- Every ledger row's tier is resolved by `doc-it tiers resolve`, and an unknown tier is refused (K2-02).
+  Without doc-it the audit prints `[skip] doc-it not installed: tier enum` and never reports that check
+  as PASS (K2-03, D14).
+
+### Security (CP-03 adversarial review, rounds 1–5)
+- G-6 fails closed: a model id that does not reduce to a known family (`opusplan`, `best`) is refused
+  instead of being compared as a raw string; `--model-family` declares an unknown one (Q1-H1).
+- Evidence is verified, not only shaped: cited shas and paths are looked up with `git cat-file -e` in the
+  repos named by `--repos` or the ledger's `Repos:` header; `echo`/`printf`/`true`/`:` are not evidence (Q1-M1).
+- The chain state is bound to copies of every recorded file (`audit/.chain/`) by a digest sidecar, and
+  publish re-derives every verdict and ruling from them: `STATE_TAMPERED` (Q1-M2).
+- A ledger changed after `start` refuses with `LEDGER_CHANGED`; `start --restart` re-audits (Q1-M3).
+- Duplicate ids in a verdict or rulings file, and an unusable doc-it (`[skip] doc-it unusable`), refuse (Q1-L3, Q1-L4).
+- A model id that names a family fixes it: `--model-family` cannot relabel `opus-xl` or `claude-opus-research`,
+  and an id naming two families is refused (R2-Q1-M4).
+- The published files are hashed into the chain state; `status` exits 1 with `PUBLISHED_TAMPERED` after a hand
+  edit of SAFE.md, ombudsman.md or the audit file. Consumers run `status` before trusting SAFE.md (R2-Q1-M5).
+- `ls`/`cat` with no path or a device path are not evidence; a `--repos` path must be a repo top level whose
+  folder or remote carries the declared name; an empty `Repos:` header no longer reads the next line (R2-L5, R2-L6, R2-L7).
+- A published file (`SAFE.md`, `ombudsman.md`, `audit-*.md`) that no hash in a valid chain state covers is
+  UNBOUND. `start` (with or without `--restart`) refuses and names it; `--quarantine-published` moves it to
+  `audit/.quarantine/<timestamp>/` first. `status` exits 1 with `PUBLISHED_UNBOUND`, also when the state is
+  missing or fails its digest. A forged SAFE.md can no longer survive a restart from a tampered or deleted
+  state (R3-Q1-M6).
+- Published names are matched case-insensitively, as macOS and Windows disks open them (`safe.md`, `ſafe.md`,
+  `Ombudsman.md`, `Audit-x.md`): a case variant is UNBOUND, so `status` exits 1 and `start` refuses it. Two names
+  in `audit/` that differ only by case are refused with `CASE_COLLISION`; a variant planted mid-chain is
+  quarantined at publish (R4-Q1-M7).
+- Ignorable code points are stripped when published names are folded, as HFS+ compares names (`SAFE<U+200C>.md`
+  opened as `audit/SAFE.md` there). Any `audit/` entry whose name is not printable ASCII is refused with
+  `UNSAFE_NAME` by `start` and `status`, is UNBOUND, and is quarantined by `--quarantine-published` or at publish (R5-Q1-M8).
+- G-6 family rules read the whole model id: bracketed text other than a trailing `[1m]` tag is refused, a family word
+  before a vendor segment still counts, and vendor words (`anthropic`, `claude`, `openai`, `google`, `meta`, `xai`) are
+  family hints that a resolved or declared family must match, so `gemini-2.5-pro[opus]` and a bare `claude` declared
+  `gemini` are refused (R5-Q1-M9, R5-L3). Prefix words after the head word are read as letters (`o-p-us`, `h-ai-ku`, R5-L1).
+- `llama.cpp`, `llamafile`, `mistral.rs`, `gpt4all` are router words; `gpt-4o`, `o3`, `o4-mini`, `gpt-oss`, `Qwen/Qwen2.5-…`,
+  `meta-llama/Llama-…` and `codestral` resolve without a declaration (R5-L2, R5-L4).
+- Lookalike model ids are folded before family matching (NFKC, confusable Greek/Cyrillic letters to Latin,
+  0→o, 1→l, 5→s inside a word, separated letters read joined up), so `οpus`, `ｏｐｕｓ`, `claude-0pus-5-5`,
+  `o-p-u-s` are `opus` and cannot be declared another family; an id still holding non-ASCII is refused (R3-L4).
+- Runtime and router words (`ollama`, `openrouter`, `groq`, `together` …) are read as provider prefixes, so
+  `ollama/qwen2.5:7b`, `ollama/mistral` and `ollama/deepseek-r1` resolve to their family instead of being refused
+  as "more than one family (llama, …)"; an id naming only a router is refused (R4-L8).
+
 ## [2.1.1] — 2026-10-18
 
 Patch release, from the first real run of the do-it harness.
