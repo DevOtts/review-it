@@ -204,3 +204,13 @@ test('R5-L3 bare claude / anthropic ids are bound to the claude families: declar
   assert.match(r.stderr, /G-6: auditor model: model id "claude" names the vendor claude, .*resolves to gemini/);
   assert.ok(!existsSync(join(ws.dir, 'audit/chain-state.json')));
 });
+
+test('R5-L2 local runtimes named after a family (llama.cpp, llamafile, mistral.rs, gpt4all) are router words; a hidden family still refuses', () => {
+  for (const id of ['llama.cpp/qwen2.5', 'llamacpp/qwen2.5', 'llamafile/qwen2.5', 'mistral.rs/qwen', 'mistralrs/qwen', 'gpt4all/qwen'])
+    assert.deepEqual(resolveFamily(id, { [id]: 'qwen' }), { family: 'qwen' }, id);
+  for (const id of ['llama.cpp', 'llamafile', 'gpt4all:latest']) assert.match(resolveFamily(id, { [id]: 'qwen' }).error, /names only a runtime or router/, id);
+  // a router never hides the family that follows it, and a runtime name glued to another word is no router
+  assert.match(resolveFamily('llama.cpp/opus-x', { 'llama.cpp/opus-x': 'gemini' }).error, /contradicts the known family .*\(opus\)/);
+  assert.match(resolveFamily('llama.cppopus', { 'llama.cppopus': 'opus' }).error, /names more than one family/);
+  assert.match(resolveFamily('gpt4all/opus', { 'gpt4all/opus': 'gpt' }).error, /contradicts the known family .*\(opus\)/);
+});

@@ -89,7 +89,7 @@ export const MODEL_FAMILIES = {
   // and `ollama` merely CONTAINS `llama`; read as a prefix it is skipped, never searched for a family inside
   // it. Only a whole word of the id is a router: `ollamaopus` is still one word holding two families.
   routers: ['ollama', 'openrouter', 'groq', 'together', 'togetherai', 'fireworks', 'accounts', 'lmstudio', 'huggingface', 'hf',
-    'azure', 'deepinfra', 'replicate', 'cerebras', 'sambanova', 'vllm', 'local'],
+    'azure', 'deepinfra', 'replicate', 'cerebras', 'sambanova', 'vllm', 'local', 'llamacpp', 'llamafile', 'mistralrs', 'gptforall'],
 };
 MODEL_FAMILIES.prefixes.push(...MODEL_FAMILIES.routers);
 // CP-03 R3-L4: lookalike ids. Before any family matching the id is NFKC-normalised (fullwidth `ｏｐｕｓ` →
@@ -115,7 +115,11 @@ const foldDigits = (s) => s.replace(/[a-z0-9]+/g, (w) => (/[a-z]/.test(w) ? w.re
 // CP-03 R5-Q1-M9: the words of the WHOLE normalised id, nothing stripped. The family-binding rules (a word
 // that names a family fixes it; two families are refused; the joined-letters pass) read these, so text that
 // familyWords drops (`[opus]`, `opus/anthropic/…`) can never hide a family.
-const splitWords = (s) => s.split(/[^a-z0-9]+|(?<=[a-z])(?=[0-9])|(?<=[0-9])(?=[a-z])/).filter(Boolean);
+// CP-03 R5-L2: local runtimes whose names hold a family word (llama.cpp, llamafile, mistral.rs, gpt4all) are
+// router words when they are a whole path segment (`llama.cpp/qwen2.5`); they are read as one router word.
+const RUNTIME_SEGMENT = /(^|[/:@])(llama\.cpp|llamacpp|llamafile|mistral\.rs|mistralrs|gpt4all)(?=[/:@]|$)/g;
+const RUNTIME_WORD = { 'llama.cpp': 'llamacpp', llamacpp: 'llamacpp', llamafile: 'llamafile', 'mistral.rs': 'mistralrs', mistralrs: 'mistralrs', gpt4all: 'gptforall' };
+const splitWords = (s) => s.replace(RUNTIME_SEGMENT, (_, a, r) => `${a}${RUNTIME_WORD[r]}`).split(/[^a-z0-9]+|(?<=[a-z])(?=[0-9])|(?<=[0-9])(?=[a-z])/).filter(Boolean);
 const rawWords = (s) => splitWords(s);
 // Vendor words hint at the families they make; an id whose resolved or declared family is not one of
 // them is refused (`anthropic/gemini-pro`, `meta/gpt-x` declared gpt). `x` + `ai` is xai (`x-ai/grok-4`).
